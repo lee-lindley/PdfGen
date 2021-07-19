@@ -190,6 +190,8 @@ AS
     g_header_txt_2          VARCHAR2(32767);
     g_header_fontsize_pt_2  NUMBER;
     g_header_centered_2     BOOLEAN;
+    g_pageval_width         NUMBER;
+
 $if $$use_applog $then
     g_log                   applog_udt;
 $end
@@ -222,7 +224,12 @@ $end
                                             REPLACE(
                                                 REPLACE(g_page_procs(p), '#PAGE_NR#', i)
                                                 ,'"PAGE_COUNT#', v_page_count)
-                                            ,'!PAGE_VAL#', CASE WHEN g_pagevals.EXISTS(i-1) THEN g_pagevals(i-1) END
+                                            ,'!PAGE_VAL#', CASE WHEN g_pagevals.EXISTS(i-1) 
+                                                            THEN CASE WHEN g_pageval_width IS NULL
+                                                                    THEN g_pagevals(i-1) 
+                                                                    ELSE RPAD(g_pagevals(i-1),g_pageval_width,' ')
+                                                                END
+                                                            END
                                         )
                         ;
                     BEGIN
@@ -250,6 +257,11 @@ $end
         END IF;
     END apply_page_procs;
 
+    PROCEDURE set_pageval_width(p_width NUMBER)
+    IS
+    BEGIN
+        g_pageval_width := p_width;
+    END set_pageval_width;
 
     PROCEDURE apply_footer(
         p_page_nr       VARCHAR2
