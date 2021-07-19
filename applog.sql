@@ -28,7 +28,7 @@ THE SOFTWARE.
 -- The core is an object oriented user defined type with logging methods.
 -- Since the autonomous transactions write independently, you can get status
 -- of the program before "succesful" completion that might be required for dbms_output.
--- In addition to generally useful logging, it is indeispensable for debugging and development.
+-- In addition to generally useful logging, it is indispensable for debugging and development.
 --
 ALTER SESSION SET plsql_code_type = NATIVE;
 ALTER SESSION SET plsql_optimize_level=3;

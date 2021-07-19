@@ -1,3 +1,9 @@
+--
+-- comment this out if you do not want to use applog
+ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
+--
+CREATE OR REPLACE PACKAGE PdfGen
+AS
 /*
   Author: Lee Lindley
   Date: 07/18/2021
@@ -22,44 +28,66 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
---
--- comment this out if you do not want to use applog
-ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
---
-CREATE OR REPLACE PACKAGE PdfGen
-AS
+    -- The use case for this package is to replicate a small subset of the capability of
+    -- sqlplus report generation for the scenario that you cannot (or do not want to) 
+    -- run sqlplus, capture the output and convert it to pdf. You also gain font control
+    -- and optional grid lines/cells for the column data values.
+    --
+    -- An alternate name for this facility might be query2report.
+    --
     -- PdfGen relies entirely on as_pdf3 by Anton Scheffer. It uses only the
     -- public interface. There is no mucking with the internals. The only change
-    -- to the original package published in 2012 is adding 1 constant c_get_page_count
+    -- to the original package published in 2012 found in the version in this repository
+    -- is addition of 1 constant, c_get_page_count, 
     -- and associated return value from the public "get" function.
     --
-    -- If you deploy as_pdf3 with a different name, you will need to do a global substitution
-    -- for as_pdf3 in this package or deploy a synonym.
-    --
-    -- This wrapper package extends and enhances the cursor2table functionality with
+    -- This package extends and enhances (replaces) the as_pdf3.cursor2table functionality with
     -- respect to colunn headers and widths, plus the ability to capture a column page break value
-    -- for the page_procs callbacks and go to a new page when the value changes.
-    -- The "page_procs" callback facility is duplicated (both are called) here so that
+    -- for the page_procs callbacks, and go to a new page when the break-column value changes.
+    --
+    -- Column widths may also be set to 0 for NOPRINT. Break Columns where the value is captured
+    -- and printed in the page header via a callback can be set to 0 width and not printed with the record.
+    -- Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
+    -- and parse those in your callback procedure.
+    --
+    -- The as_pdf3 "page_procs" callback facility is duplicated (both are called) so that
     -- the page break column value can be supplied in addition to the page number and page count
     -- that the original supported.
     --
-    -- When you use any part of this procedure, you must use init, and either get_pdf or save_pdf
+    -- Also provided are simplified methods for generating semi-standard page header and footer
+    -- that are less onerous than the quoting required for generating an anonymous pl/sql block string.
+    -- You can use these procedures as a template for building your own page_proc procedure.
+    --
+    -- When you use any part of this procedure, you must use init(), and either get_pdf() or save_pdf()
     -- from this package instead of the ones in as_pdf3. Those call the ones in as_pdf3 in
     -- addition to the added functionality.
     -- Other than that you should be able to use as_pdf3 public functionality directly,
-    -- mixed in with calls to PdfGen. In particular you may be using as_pdf3.set_font.
+    -- mixed in with calls to PdfGen. In particular you will probably be using as_pdf3.set_font.
     --
-
-    -- not sure why plain tables were used in the original. This is easier and apparently faster (not that it matters)
-    -- It may be that you can provide a default value of NULL. But I have another refcursor2table footprint
-    -- you can call in that case
+    -- The page x/y grid is first quadrant (i.e. 0,0 is bottom left of the page). "margin" is the area
+    -- that the report grid is not supposed to print into, but the right margin is only respected by 
+    -- the as_pdf3.write call, not put_text() which is used in the grid, headings and footers. 
+    -- Up to you to keep printed record width short enough to fit or change the page size/orientation/margins.
+    -- The lower left point of the grid print area is (0+left margin, 0+bottom margin).
+    -- The top right point of the grid print area is ((page_height - margin_top), (page_width - margin right)).
+    -- The grid printing starts at the top margin and will go to a new page before getting into the bottom margin.
+    -- We write the page header and footer into the margin areas, so the word "margin" is overloaded a bit here
+    -- because for printing the margin has nothing in it. We write in our margin. Up to you to make sure
+    -- where you write will actually print.
+    --
+    --
+    -- not sure why plain table collections were used in the original. This is easier and apparently faster (not that it matters).
+    -- It may be so that you can provide a default value of NULL which I don't think you can do for index by table variables.
+    -- This version supplies two refcursor2table footprints that can resolve not providing widths so not an issue here.
+    --
     TYPE t_col_widths IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
     TYPE t_col_headers IS TABLE OF VARCHAR2(4000) INDEX BY BINARY_INTEGER;
 
-    -- you can put page specific values here for !PAGE_VAL# yourself, though not intended design
-    -- which is for column breaks. Remember that the index starts at 0 for page 1.
-    TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
-    g_page_procs    t_page_procs;
+    -- you can put page specific values here for !PAGE_VAL# yourself, though it is 
+    -- not the intended design which is for column breaks. 
+    -- Remember that the index starts at 0 for page 1.
+    TYPE t_pagevals IS TABLE OF VARCHAR2(32767) INDEX BY BINARY_INTEGER;
+    g_pagevals      t_pagevals;
 
     -- must call this init which also calls as_pdf3.init
     PROCEDURE init;
@@ -68,21 +96,23 @@ AS
         p_format            VARCHAR2 := 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
         ,p_orientation      VARCHAR2 := 'PORTRAIT' -- or 'LANDSCAPE'
         -- these are inches. Use as_pdf3 procedures if you want other units
+        -- Remember we write header/footer inside top/bottom margin areas
         ,p_top_margin       NUMBER := 1
         ,p_bottom_margin    NUMBER := 1
         ,p_left_margin      NUMBER := 0.75
         ,p_right_margin     NUMBER := 0.75
     );
     -- strings #PAGE_NR#, "PAGE_COUNT# and !PAGE_VAL# are substituted in the block string
-    -- before execute immediate.
+    -- before execute immediate on each page of the PDF after the grid is written.
     PROCEDURE set_page_proc(p_sql_block CLOB);
 
     -- simple 1 line footer inside the bottom margin with page specific substitutions
     PROCEDURE set_footer(
-        p_txt           VARCHAR2
+        p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
         ,p_font_family  VARCHAR2    := 'helvetica'
         ,p_style        VARCHAR2    := 'n'
         ,p_fontsize_pt  NUMBER      := 8
+        ,p_centered     BOOLEAN     := TRUE -- false give left align
     );
     -- callback proc. Not part of user interface
     PROCEDURE apply_footer(
@@ -91,11 +121,17 @@ AS
         ,p_page_val     VARCHAR2
     );
     -- simple 1 line header slightly into the top margin with page specific substitutions
+    -- Optionally can be two lines such as might be useful with column-break values on the
+    -- second line.
     PROCEDURE set_header(
-        p_txt           VARCHAR2
-        ,p_font_family  VARCHAR2    := 'helvetica'
-        ,p_style        VARCHAR2    := 'b'
-        ,p_fontsize_pt  NUMBER      := 18
+        p_txt               VARCHAR2
+        ,p_font_family      VARCHAR2    := 'helvetica'
+        ,p_style            VARCHAR2    := 'b'
+        ,p_fontsize_pt      NUMBER      := 18
+        ,p_centered         BOOLEAN     := TRUE -- false give left align
+        ,p_txt_2            VARCHAR2    := NULL
+        ,p_fontsize_pt_2    NUMBER      := 14
+        ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     );
     -- callback proc. Not part of user interface
     PROCEDURE apply_header (
@@ -105,19 +141,21 @@ AS
     );
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
+        -- if true, calculate the headers and widths from query column names
+        ,p_col_headers              BOOLEAN         := FALSE 
+        -- index to column to perform a page break upon value change
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+    );
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         -- index to column to perform a page break upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
-    );
-    PROCEDURE refcursor2table(
-        p_src                       SYS_REFCURSOR
-        -- if true, calculate the headers and widths from query column names
-        ,p_col_headers              BOOLEAN         := FALSE 
-        -- index to column to perform a page break upon value change
-        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
     );
 
     -- use these instead of as_pdf3 versions (which are called by these).
@@ -129,26 +167,34 @@ AS
     );
 END PdfGen;
 /
+show errors
 CREATE OR REPLACE PACKAGE BODY PdfGen
 AS
-    TYPE t_pagevals IS TABLE OF VARCHAR2(32767) INDEX BY BINARY_INTEGER;
-    g_pagevals      t_pagevals;
+    -- pl/sql bloces given to execute immediate on every page at the very end
+    TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
+    g_page_procs    t_page_procs;
 
+    -- used internally for apply_footer/apply_header
     g_footer_txt            VARCHAR2(32767);
     g_footer_font_family    VARCHAR2(100);
     g_footer_style          VARCHAR2(2);
     g_footer_fontsize_pt    NUMBER;
+    g_footer_centered       BOOLEAN;
     g_header_txt            VARCHAR2(32767);
     g_header_font_family    VARCHAR2(100);
     g_header_style          VARCHAR2(2);
     g_header_fontsize_pt    NUMBER;
+    g_header_centered       BOOLEAN;
+    g_header_txt_2          VARCHAR2(32767);
+    g_header_fontsize_pt_2  NUMBER;
+    g_header_centered_2     BOOLEAN;
 $if $$use_applog $then
     g_log                   applog_udt;
 $end
 
     PROCEDURE apply_page_procs
     -- get_pdf and save_pdf still call the as_pdf3 versions which call the as_pdf3 version of finish_pdf.
-    -- that applies the as_pdf3 page procs which we are not using
+    -- that applies the as_pdf3 page procs which we are not using, but you might.
     IS
         v_page_count    BINARY_INTEGER;
     BEGIN
@@ -210,6 +256,7 @@ $end
     ) IS
         v_txt           VARCHAR2(32767);
         v_half_width    NUMBER;
+        c_padding       CONSTANT NUMBER := 5; --space beteen footer line and margin
     BEGIN
         v_txt := REPLACE(
                     REPLACE(
@@ -220,8 +267,11 @@ $end
         as_pdf3.set_font(g_footer_font_family, g_footer_style, g_footer_fontsize_pt);
         v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-            ,p_y => 20
+            ,p_x => CASE WHEN g_footer_centered THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
+                         ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+                    END
+            ,p_y => as_pdf3.get(as_pdf3.c_get_margin_bottom) - g_footer_fontsize_pt - c_padding
+            --,p_y => 20
         );
     END apply_footer;
 
@@ -230,12 +280,14 @@ $end
         ,p_font_family  VARCHAR2    := 'helvetica'
         ,p_style        VARCHAR2    := 'n'
         ,p_fontsize_pt  NUMBER      := 8
+        ,p_centered     BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN  
         g_footer_txt            := p_txt;    
         g_footer_font_family    := p_font_family;
         g_footer_style          := p_style;
         g_footer_fontsize_pt    := p_fontsize_pt;
+        g_footer_centered       := p_centered;
         set_page_proc(q'~BEGIN PdfGen.apply_footer(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => '!PAGE_VAL#'); END;~');
     END set_footer;
 
@@ -246,6 +298,8 @@ $end
     ) IS
         v_txt           VARCHAR2(32767);
         v_half_width    NUMBER;
+        c_padding       CONSTANT NUMBER := 2; --space between heading line and margin
+        c_rf            CONSTANT NUMBER := 0.2; -- raise factor. Anton uses the term. Spacing so bottom of font is not right on the line
     BEGIN
         v_txt := REPLACE(
                     REPLACE(
@@ -256,23 +310,52 @@ $end
         as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt);
         v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-            -- 1 line of header size into the top margin
-            ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) + g_header_fontsize_pt
+            ,p_x => CASE WHEN g_header_centered THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
+                         ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+                    END
+            ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
+                    + c_padding + (c_rf * g_header_fontsize_pt)
+                -- go higer by line size of the 2nd line plus padding if needed
+                + CASE WHEN g_header_txt_2 IS NULL THEN 0 ELSE c_padding + ((1 + c_rf) * g_header_fontsize_pt_2) END
         );
+        IF g_header_txt_2 IS NOT NULL THEN
+            v_txt := REPLACE(
+                        REPLACE(
+                            REPLACE(g_header_txt_2, '#PAGE_NR#', p_page_nr)
+                            ,'"PAGE_COUNT#', p_page_count)
+                        ,'!PAGE_VAL#', p_page_val
+                    );
+            as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt_2);
+            v_half_width := as_pdf3.str_len(v_txt) / 2.0;
+            as_pdf3.put_txt(p_txt => v_txt
+                ,p_x => CASE WHEN g_header_centered_2 THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
+                            ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+                        END
+                ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
+                            + c_padding + (c_rf * g_header_fontsize_pt_2)
+            );
+        END IF;
     END apply_header;
 
     PROCEDURE set_header(
-        p_txt           VARCHAR2
-        ,p_font_family  VARCHAR2    := 'helvetica'
-        ,p_style        VARCHAR2    := 'b'
-        ,p_fontsize_pt  NUMBER      := 18
+        p_txt               VARCHAR2
+        ,p_font_family      VARCHAR2    := 'helvetica'
+        ,p_style            VARCHAR2    := 'b'
+        ,p_fontsize_pt      NUMBER      := 18
+        ,p_centered         BOOLEAN     := TRUE -- false give left align
+        ,p_txt_2            VARCHAR2    := NULL
+        ,p_fontsize_pt_2    NUMBER      := 14
+        ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN
         g_header_txt            := p_txt;    
         g_header_font_family    := p_font_family;
         g_header_style          := p_style;
         g_header_fontsize_pt    := p_fontsize_pt;
+        g_header_centered       := p_centered;
+        g_header_txt_2          := p_txt_2;
+        g_header_fontsize_pt_2  := p_fontsize_pt_2;
+        g_header_centered_2     := p_centered_2;
         set_page_proc(q'~BEGIN PdfGen.apply_header(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => '!PAGE_VAL#'); END;~');
     END set_header;
 
@@ -333,12 +416,13 @@ $end
 
     PROCEDURE cursor2table ( 
         p_c integer
-        -- count on these being continuous starting at 1 and matching the query columns
+        -- count on these being continuous starting at index=1 and matching the query columns
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
     )
     IS
         c_padding  CONSTANT NUMBER := 2;
@@ -409,6 +493,7 @@ $END
                 v_x := as_pdf3.get(as_pdf3.c_get_margin_left);
                 FOR c IN 1 .. v_col_cnt
                 LOOP
+                    CONTINUE WHEN v_col_widths(c) = 0;
                     IF p_bold_headers THEN
                         as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight, '000000', 'D3D3D3');
                     ELSE
@@ -528,7 +613,10 @@ $end
                 v_x := as_pdf3.get(as_pdf3.c_get_margin_left);
                 FOR c IN 1 .. v_col_cnt
                 LOOP
-                    as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight);
+                    CONTINUE WHEN v_col_widths(c) = 0;
+                    IF p_grid_lines THEN
+                        as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight);
+                    END IF;
                     v_txt := get_col_val(c, i);
                     IF v_txt IS NOT NULL THEN
                         IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
@@ -555,12 +643,13 @@ $end
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
     ) IS
         v_cx                        INTEGER;
         v_src                       SYS_REFCURSOR := p_src;
     BEGIN
         v_cx := DBMS_SQL.to_cursor_number(v_src);
-        cursor2table(v_cx, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col);
+        cursor2table(v_cx, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col, p_grid_lines);
         DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
@@ -569,6 +658,7 @@ $end
         p_src                       SYS_REFCURSOR
         ,p_col_headers              BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
     ) IS
         v_cx                        INTEGER;
         v_src                       SYS_REFCURSOR := p_src;
@@ -594,9 +684,10 @@ $END
                 v_headers(i) := v_desc_tab(i).col_name;
             END LOOP;
         END IF;
-        cursor2table(v_cx, v_widths, v_headers, p_col_headers, TRUE, p_break_col);
+        cursor2table(v_cx, v_widths, v_headers, p_col_headers, TRUE, p_break_col, p_grid_lines);
         DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
 END PdfGen;
 /
+show errors
