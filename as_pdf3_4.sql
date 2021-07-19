@@ -20,6 +20,8 @@ is
 **
 **   Date: 07-17-2021 Lee Lindley
 **     added c_get_page_count and return of same from function get()
+**      If you want to modify your own version, search for c_get_page_count
+**      in this source. It is only 2 lines. Otherwise identical to the original.
 ******************************************************************************
 ******************************************************************************
 Copyright (C) 2012 by Anton Scheffer
