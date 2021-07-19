@@ -1,7 +1,7 @@
 # PdfGen.sql
 
 PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
-respect to colunn headers and widths, plus the ability to capture a column page break value
+respect to column headers and widths, plus the ability to capture a column page break value
 for the page_procs callbacks, and go to a new page when the break-column value changes.
 Everything is implemented using the *as_pdf3* public interface.
 
@@ -46,7 +46,8 @@ In addition to generally useful logging, it (or something like it)
 is indispensable for debugging and development.
 
 You do not have to deploy this package and tables. There is a compile directive in *PdfGen.sql*
-that must be set to turn it on. If you comment out that line, it will compile without this.
+that must be set to turn it on. If you comment out that line in the deploy script (along with the call
+to applog.sql), PdfGen.sql will compile just fine without it.
 
 # test_PdfGen.sql
 
