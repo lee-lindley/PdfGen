@@ -187,7 +187,7 @@ CREATE OR REPLACE TYPE BODY applog_udt AS
         EXCEPTION WHEN NO_DATA_FOUND
             THEN 
                 app_id := applog_app_seq.NEXTVAL;
-                INSERT INTO applog_app(app_id, app_name) VALUES (SELF.app_id, SELF.app_name));
+                INSERT INTO applog_app(app_id, app_name) VALUES (SELF.app_id, SELF.app_name);
                 COMMIT;
         END;
         RETURN;

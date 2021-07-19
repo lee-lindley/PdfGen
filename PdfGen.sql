@@ -1,6 +1,6 @@
 --
 -- comment this out if you do not want to use applog
-ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
+--ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
 --
 CREATE OR REPLACE PACKAGE PdfGen
 AS
