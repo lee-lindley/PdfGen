@@ -104,6 +104,8 @@ THE SOFTWARE.
     );
     -- strings #PAGE_NR#, "PAGE_COUNT# and !PAGE_VAL# are substituted in the block string
     -- before execute immediate on each page of the PDF after the grid is written.
+    -- !!!!!!!!!!! Beware when your column can contain quote characters!!!!!!!!!!!!!!!!!!!!!!!
+    -- Quote carefully in your page proc block
     PROCEDURE set_page_proc(p_sql_block CLOB);
 
     -- simple 1 line footer inside the bottom margin with page specific substitutions
@@ -224,10 +226,10 @@ $end
                                         )
                         ;
                     BEGIN
-                        -- mypkg.function(p_page_nr => #PAGE_NR#, p_page_count => "PAGE_COUNT#, p_page_val => '!PAGE_VAL#');
-$if $$use_applog $then
-                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
-$end
+                        -- mypkg.function(p_page_nr => #PAGE_NR#, p_page_count => "PAGE_COUNT#, p_page_val => q'[!PAGE_VAL#]');
+--$if $$use_applog $then
+--                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
+--$end
                         EXECUTE IMMEDIATE l_proc;
                     EXCEPTION
                         WHEN OTHERS THEN -- we ignore the error, but at least we print it for debugging
@@ -288,7 +290,7 @@ $end
         g_footer_style          := p_style;
         g_footer_fontsize_pt    := p_fontsize_pt;
         g_footer_centered       := p_centered;
-        set_page_proc(q'~BEGIN PdfGen.apply_footer(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => '!PAGE_VAL#'); END;~');
+        set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
     END set_footer;
 
     PROCEDURE apply_header (
@@ -356,7 +358,7 @@ $end
         g_header_txt_2          := p_txt_2;
         g_header_fontsize_pt_2  := p_fontsize_pt_2;
         g_header_centered_2     := p_centered_2;
-        set_page_proc(q'~BEGIN PdfGen.apply_header(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => '!PAGE_VAL#'); END;~');
+        set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
     END set_header;
 
     PROCEDURE set_page_proc(p_sql_block CLOB)

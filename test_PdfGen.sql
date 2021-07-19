@@ -173,7 +173,7 @@ BEGIN
     PdfGen.set_footer('Page #PAGE_NR# of "PAGE_COUNT#');
     --PdfGen.set_header('Data Dictionary Views');
     -- !PAGE_VAL# will come from a column break value named "GRP" in the query (column 3)
-    PdfGen.set_page_proc(q'~BEGIN test_PdfGen.apply_page_header(p_txt => 'Data Dictionary Views Legal Landscape', p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => '!PAGE_VAL#'); END;~');
+    PdfGen.set_page_proc(q'[BEGIN test_PdfGen.apply_page_header(p_txt => 'Data Dictionary Views Legal Landscape', p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
     -- just so we can see the margins
     as_pdf3.rect(as_pdf3.get(as_pdf3.c_get_margin_left), as_pdf3.get(as_pdf3.c_get_margin_bottom)
             ,as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right) - as_pdf3.get(as_pdf3.c_get_margin_left)
