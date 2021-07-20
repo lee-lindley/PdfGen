@@ -15,7 +15,7 @@ An alternate name for this facility might be query2report.
 
 ## Example
 
-    FUNCTION test2 RETURN BLOB
+    FUNCTION test3 RETURN BLOB
     IS
         v_src   SYS_REFCURSOR;
         v_blob  BLOB;
@@ -83,7 +83,17 @@ An alternate name for this facility might be query2report.
         EXCEPTION WHEN invalid_cursor THEN NULL;
         END;
         RETURN v_blob;
-    END test2;
+    END test3;
+
+## Retrieve Blob and View
+
+With SqlDeveloper or Toad _SELECT test3 FROM dual;_ Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose _download_ (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+
+## Results
+
+ ![test3_pg1](/images/test3_pg1.png)
+
+ ![test3_pg2](/images/test3_pg2.png)
 
 ## A Few Details
 
