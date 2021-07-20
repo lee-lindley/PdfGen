@@ -13,6 +13,9 @@ and optional grid lines/cells for the column data values.
 
 An alternate name for this facility might be query2report.
 
+There are many report generators in the world. Most of them cost money.
+This is free and a little easier than using _as_pdf3_ directly.
+
 ## Example
 
     FUNCTION test3 RETURN BLOB
@@ -138,10 +141,6 @@ to applog.sql), PdfGen.sql will compile just fine without it.
 
 A package that represents my test cases as well as examples of how to use it. There is no reason
 for you to deploy it except for study. Then by all means proceed. You can always drop it later.
-
-# PdfGen_sample_pdf.zip
-
-Output from test_PdfGen.sql in pdf format
 
 # deploy.sql
 
