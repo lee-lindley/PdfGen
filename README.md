@@ -19,7 +19,7 @@ and a little easier than using *as_pdf3* directly.
 
 ## Example
 
-   CREATE OR REPLACE FUNCTION test0 RETURN BLOB
+    CREATE OR REPLACE FUNCTION test0 RETURN BLOB
     IS
         v_src       SYS_REFCURSOR;
         v_blob      BLOB;
