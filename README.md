@@ -109,7 +109,9 @@ and a little easier than using *as_pdf3* directly.
 ## Retrieve Blob and View
 
 With SqlDeveloper or Toad 
+
 >SELECT test0 FROM dual;
+
 Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
 
 ## Results
