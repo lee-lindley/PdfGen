@@ -108,31 +108,46 @@ and a little easier than using *as_pdf3* directly.
 
 ## Retrieve Blob and View
 
-With SqlDeveloper or Toad *SELECT test3 FROM dual;* Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+With SqlDeveloper or Toad 
+>SELECT test0 FROM dual;
+Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
 
 ## Results
 
- ![test3_pg1](/images/test0_pg1.png)
+ ![test0_pg1](/images/test0_pg1.png)
 
  ![test0_pgx](/images/test0_pgx.png)
 
 ## A Few Details
 
 Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
-and printed in the page header via a callback can be captured, but not printed with the record.
+and printed in the page header via a callback, can be captured, but optionally not printed with the record.
 Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
 and parse those in your callback procedure.
 
 The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
 the page break column value can be supplied in addition to the page number and page count
-that the original supported.
+that the original supported. One major difference is the use of bind placeholders instead
+of direct string substitution in your pl/sql block. We follow the same convention for
+substitution strings in the built-in header and footer procedures, but internally, and
+for your own custom callbacks, you will be providing positional bind placeholders (placeholder names do not matter)
+for EXECUTE IMMEDIATE. This eliminates a nagging problem with quoting values 
+in page_val as well as eliminating a potential source of sql injection. Example:
 
-Also provided are simplified methods for generating semi-standard page header and footer
-that are less onerous than the quoting required for generating an anonymous pl/sql block string.
+    PdfGen.set_page_proc(q'[BEGIN yourpkgname.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+
+That block (*g_page_procs(p)* below) is then executed with:
+
+    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
+
+where i is the page number and g_pagevals(i) is the page specific column break value. 
+
+Also provided are simplified methods for generating semi-standard page header and footer.
 You can use these procedures as a template for building your own page_proc procedure if they
 do not meet your needs.
 
-You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*.
+You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*. In fact
+you are expected to do so with procedures such as *as_pdf3.set_font*.
 
 # as_pdf3_4.sql
 

@@ -2,9 +2,22 @@
 -- Explorers margins and borders along with exercising callback, headers
 -- footers and 0 width hidden column.
 --
--- You may need to grant select on hr.employees and hr.departments to your schema owner.
--- Or comment out test0
+-- You may need to grant select on hr.employees and hr.departments to your schema owner
+-- If you even have that schema installed.
+-- This block checks and if available will compile test0 into the package.
 --
+set serveroutput on
+DECLARE
+    l_t varchar2(128);
+BEGIN
+    SELECT table_name INTO l_t FROM user_tab_privs WHERE owner = 'HR' AND table_name = 'DEPARTMENTS' AND privilege = 'SELECT';
+    SELECT table_name INTO l_t FROM user_tab_privs WHERE owner = 'HR' AND table_name = 'EMPLOYEES' AND privilege = 'SELECT';
+    DBMS_OUTPUT.put_line('found select on hr.departments and hr.employees so compiling test0 function');
+    EXECUTE IMMEDIATE q'[ALTER SESSION SET PLSQL_CCFLAGS='have_hr_schema_select:TRUE']';
+EXCEPTION WHEN OTHERS THEN
+    DBMS_OUTPUT.put_line('grant select on hr.employees and hr.departments to your schema owner if you want to see test0');
+END;
+/
 CREATE OR REPLACE PACKAGE test_PdfGen 
 AUTHID CURRENT_USER
 AS
@@ -13,15 +26,17 @@ AS
 -- click on the pencil icon. Choose Download. Save the file as "x.pdf" or whatever.pdf.
 -- open in pdf viewer.
 --
+$if $$have_hr_schema_select $then
     FUNCTION test0 RETURN BLOB;
+$end
     FUNCTION test1 RETURN BLOB;
     FUNCTION test2 RETURN BLOB;
     FUNCTION test3 RETURN BLOB;
     FUNCTION test_margins(p_page_format VARCHAR2, p_page_orientation VARCHAR2) RETURN BLOB;
     PROCEDURE apply_page_header(
         p_txt           VARCHAR2
-        ,p_page_nr      VARCHAR2
-        ,p_page_count   VARCHAR2
+        ,p_page_nr      NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
 END test_PdfGen;
@@ -30,8 +45,8 @@ show errors
 CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
     PROCEDURE apply_page_header(
         p_txt           VARCHAR2
-        ,p_page_nr      VARCHAR2
-        ,p_page_count   VARCHAR2
+        ,p_page_nr      NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     ) IS
         --
@@ -46,8 +61,8 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
     BEGIN
         v_txt := REPLACE(
                     REPLACE(
-                        REPLACE(p_txt, '#PAGE_NR#', p_page_nr)
-                        ,'"PAGE_COUNT#', p_page_count)
+                        REPLACE(p_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font('helvetica','b',18);
@@ -58,8 +73,8 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
         );
         v_txt := REPLACE(
                     REPLACE(
-                        REPLACE('Page_Nr=#PAGE_NR# Page_Count="PAGE_COUNT# page_val=!PAGE_VAL#', '#PAGE_NR#', p_page_nr)
-                        ,'"PAGE_COUNT#', p_page_count)
+                        REPLACE('Page_Nr=#PAGE_NR# Page_Count="PAGE_COUNT# page_val=!PAGE_VAL#', '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font('helvetica','b',14);
@@ -71,6 +86,7 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
         );
     END apply_page_header;
 
+$if $$have_hr_schema_select $then
    FUNCTION test0 RETURN BLOB
     IS
         v_src       SYS_REFCURSOR;
@@ -157,6 +173,7 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
         END;
         RETURN v_blob;
     END test0;
+$end
 
 FUNCTION test1
 RETURN BLOB
@@ -268,8 +285,8 @@ BEGIN
     PdfGen.set_page_format('LEGAL','LANDSCAPE');
     PdfGen.set_footer('Page #PAGE_NR# of "PAGE_COUNT#');
     --PdfGen.set_header('Data Dictionary Views');
-    -- !PAGE_VAL# will come from a column break value named "GRP" in the query (column 3)
-    PdfGen.set_page_proc(q'[BEGIN test_PdfGen.apply_page_header(p_txt => 'Data Dictionary Views Legal Landscape', p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
+    -- :page_val will come from a column break value named "GRP" in the query (column 3)
+    PdfGen.set_page_proc(q'[BEGIN test_PdfGen.apply_page_header(p_txt => 'Data Dictionary Views Legal Landscape', p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
     -- just so we can see the margins
     as_pdf3.rect(as_pdf3.get(as_pdf3.c_get_margin_left), as_pdf3.get(as_pdf3.c_get_margin_bottom)
             ,as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right) - as_pdf3.get(as_pdf3.c_get_margin_left)

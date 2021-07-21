@@ -11,7 +11,7 @@ CREATE OR REPLACE PACKAGE PdfGen
 AS
 /*
   Author: Lee Lindley
-  Date: 07/20/2021
+  Date: 07/18/2021
 
   Copyright (C) 2021 by Lee Lindley
 
@@ -35,141 +35,154 @@ THE SOFTWARE.
 */
 
 /* README.md -- do not put # in first char of line in this comment or sqlplus will puke
- # PdfGen.sql
- 
- PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
- respect to column headers and widths, plus the ability to capture a column page break value
- for the page_procs callbacks, and go to a new page when the break-column value changes.
- Everything is implemented using the *as_pdf3* public interface.
- 
- ## Use Case
- The use case for this package is to replicate a small subset of the capability of
- sqlplus report generation for the scenario that you cannot (or do not want to) 
- run sqlplus,capture the output and convert it to pdf. You also gain font control
- and optional grid lines/cells for the column data values.
- 
- An alternate name for this facility might be query2report.
- 
- There are many report generators in the world. Most of them cost money.
- This is free, powerful enough for some common use cases,
- and a little easier than using *as_pdf3* directly.
- 
- ## Example
- 
-    CREATE OR REPLACE FUNCTION test0 RETURN BLOB
-     IS
-         v_src       SYS_REFCURSOR;
-         v_blob      BLOB;
-         v_widths    PdfGen.t_col_widths;
-         v_headers   PdfGen.t_col_headers;
-         FUNCTION get_src RETURN SYS_REFCURSOR IS
-             l_src SYS_REFCURSOR;
-         BEGIN
-           OPEN l_src FOR
-             WITH a AS (
-                 SELECT e.employee_id, e.last_name, e.first_name, d.department_name
-                     ,SUM(salary) AS salary
-                 FROM hr.employees e
-                 INNER JOIN hr.departments d
-                     ON d.department_id = e.department_id
-                 GROUP BY GROUPING SETS(
-                     (e.employee_id, e.last_name, e.first_name, d.department_name)
-                     ,(d.department_name) -- subtotal on dept
-                     ,() -- grand total
-                 )
-             ) SELECT employee_id
-                 ,NVL(last_name, CASE WHEN department_name IS NULL
-                                     THEN LPAD('GRAND TOTAL:',25)
-                                     ELSE LPAD('DEPT TOTAL:',25)
-                                 END
-                 ) AS last_name
-                 ,first_name
-                 ,department_name
-                 ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
-             FROM a
-             ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
-             ;
-           RETURN l_src;
-         END;
-     BEGIN
-         v_src := get_src;
-         --
-         v_headers(1) := 'Employee ID';
-         v_widths(1)  := 11;
-         v_headers(2) := 'Last Name';
-         v_widths(2)  := 25;
-         v_headers(3) := 'First Name';
-         v_widths(3)  := 20;
-         -- will not print this column, just capture it for column page break
-         v_headers(4) := 'department_name';
-         v_widths(4)  := 0;
-         v_headers(5) := 'Salary';
-         v_widths(5)  := 16;
-         --
-         PdfGen.init;
-         PdfGen.set_page_format(
-             p_format            => 'LETTER' 
-             ,p_orientation      => 'PORTRAIT'
-             ,p_top_margin       => 1
-             ,p_bottom_margin    => 1
-             ,p_left_margin      => 0.75
-             ,p_right_margin     => 0.75
-         );
-         PdfGen.set_footer; -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
-         PdfGen.set_header(
-             p_txt           => 'Employee Salary Report'
-             ,p_font_family  => 'helvetica'
-             ,p_style        => 'b'
-             ,p_fontsize_pt  => 16
-             ,p_centered     => TRUE
-             ,p_txt_2        => 'Department: !PAGE_VAL#'
-             ,p_fontsize_pt_2 => 12
-             ,p_centered_2   => FALSE -- left align
-         );
-         --
-         as_pdf3.set_font('courier', 'n', 10);
-         PdfGen.refcursor2table(
-             p_src => v_src
-             ,p_widths => v_widths, p_headers => v_headers
-             ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
-             ,p_break_col => 4
-             ,p_grid_lines => FALSE
-         );
-         v_blob := PdfGen.get_pdf;
-         BEGIN
-             CLOSE v_src;
-         EXCEPTION WHEN invalid_cursor THEN NULL;
-         END;
-         RETURN v_blob;
-     END test0;
- 
- ## Retrieve Blob and View
- 
- With SqlDeveloper or Toad *SELECT test3 FROM dual;* Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
- 
- ## Results
- 
-  ![test3_pg1](/images/test0_pg1.png)
- 
-  ![test0_pgx](/images/test0_pgx.png)
- 
- ## A Few Details
- 
- Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
- and printed in the page header via a callback can be captured, but not printed with the record.
- Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
- and parse those in your callback procedure.
- 
- The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
- the page break column value can be supplied in addition to the page number and page count
- that the original supported.
- 
- Also provided are simplified methods for generating semi-standard page header and footer
- that are less onerous than the quoting required for generating an anonymous pl/sql block string.
- You can use these procedures as a template for building your own page_proc procedure if they
- do not meet your needs.
- 
- You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*.
+    # PdfGen.sql
+    
+    PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
+    respect to column headers and widths, plus the ability to capture a column page break value
+    for the page_procs callbacks, and go to a new page when the break-column value changes.
+    Everything is implemented using the *as_pdf3* public interface.
+    
+    ## Use Case
+    The use case for this package is to replicate a small subset of the capability of
+    sqlplus report generation for the scenario that you cannot (or do not want to) 
+    run sqlplus,capture the output and convert it to pdf. You also gain font control
+    and optional grid lines/cells for the column data values.
+    
+    An alternate name for this facility might be query2report.
+    
+    There are many report generators in the world. Most of them cost money.
+    This is free, powerful enough for some common use cases,
+    and a little easier than using *as_pdf3* directly.
+    
+    ## Example
+    
+        CREATE OR REPLACE FUNCTION test0 RETURN BLOB
+        IS
+            v_src       SYS_REFCURSOR;
+            v_blob      BLOB;
+            v_widths    PdfGen.t_col_widths;
+            v_headers   PdfGen.t_col_headers;
+            FUNCTION get_src RETURN SYS_REFCURSOR IS
+                l_src SYS_REFCURSOR;
+            BEGIN
+              OPEN l_src FOR
+                WITH a AS (
+                    SELECT e.employee_id, e.last_name, e.first_name, d.department_name
+                        ,SUM(salary) AS salary
+                    FROM hr.employees e
+                    INNER JOIN hr.departments d
+                        ON d.department_id = e.department_id
+                    GROUP BY GROUPING SETS(
+                        (e.employee_id, e.last_name, e.first_name, d.department_name)
+                        ,(d.department_name) -- subtotal on dept
+                        ,() -- grand total
+                    )
+                ) SELECT employee_id
+                    ,NVL(last_name, CASE WHEN department_name IS NULL
+                                        THEN LPAD('GRAND TOTAL:',25)
+                                        ELSE LPAD('DEPT TOTAL:',25)
+                                    END
+                    ) AS last_name
+                    ,first_name
+                    ,department_name
+                    ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
+                FROM a
+                ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
+                ;
+              RETURN l_src;
+            END;
+        BEGIN
+            v_src := get_src;
+            --
+            v_headers(1) := 'Employee ID';
+            v_widths(1)  := 11;
+            v_headers(2) := 'Last Name';
+            v_widths(2)  := 25;
+            v_headers(3) := 'First Name';
+            v_widths(3)  := 20;
+            -- will not print this column, just capture it for column page break
+            v_headers(4) := 'department_name';
+            v_widths(4)  := 0;
+            v_headers(5) := 'Salary';
+            v_widths(5)  := 16;
+            --
+            PdfGen.init;
+            PdfGen.set_page_format(
+                p_format            => 'LETTER' 
+                ,p_orientation      => 'PORTRAIT'
+                ,p_top_margin       => 1
+                ,p_bottom_margin    => 1
+                ,p_left_margin      => 0.75
+                ,p_right_margin     => 0.75
+            );
+            PdfGen.set_footer; -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
+            PdfGen.set_header(
+                p_txt           => 'Employee Salary Report'
+                ,p_font_family  => 'helvetica'
+                ,p_style        => 'b'
+                ,p_fontsize_pt  => 16
+                ,p_centered     => TRUE
+                ,p_txt_2        => 'Department: !PAGE_VAL#'
+                ,p_fontsize_pt_2 => 12
+                ,p_centered_2   => FALSE -- left align
+            );
+            --
+            as_pdf3.set_font('courier', 'n', 10);
+            PdfGen.refcursor2table(
+                p_src => v_src
+                ,p_widths => v_widths, p_headers => v_headers
+                ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
+                ,p_break_col => 4
+                ,p_grid_lines => FALSE
+            );
+            v_blob := PdfGen.get_pdf;
+            BEGIN
+                CLOSE v_src;
+            EXCEPTION WHEN invalid_cursor THEN NULL;
+            END;
+            RETURN v_blob;
+        END test0;
+    
+    ## Retrieve Blob and View
+    
+    With SqlDeveloper or Toad *SELECT test0 FROM dual;* Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+    
+    ## Results
+    
+     ![test3_pg1](/images/test0_pg1.png)
+    
+     ![test0_pgx](/images/test0_pgx.png)
+    
+    ## A Few Details
+    
+    Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
+    and printed in the page header via a callback, can be captured, but optionally not printed with the record.
+    Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
+    and parse those in your callback procedure.
+    
+    The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
+    the page break column value can be supplied in addition to the page number and page count
+    that the original supported. One major difference is the use of bind placeholders instead
+    of direct string substitution in your pl/sql block. We follow the same convention for
+    substitution strings in the built-in header and footer procedures, but internally, and
+    for your own custom callbacks, you will be providing positional bind placeholders 
+    for EXECUTE IMMEDIATE. This eliminates a nagging problem with quoting values 
+    in page_val as well as eliminating a potential source of sql injection. Example:
+    
+        set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+    
+    That string is then executed with:
+    
+        EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
+    
+    where i is the page number.
+    
+    Also provided are simplified methods for generating semi-standard page header and footer.
+    You can use these procedures as a template for building your own page_proc procedure if they
+    do not meet your needs.
+    
+    You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*. In fact
+    you are expected to do so with procedures such as *as_pdf3.set_font*.
 */
 
     --
@@ -182,7 +195,7 @@ THE SOFTWARE.
 
     -- you can put page specific values here for !PAGE_VAL# yourself, though it is 
     -- not the intended design which is for column breaks. 
-    -- Remember that the index starts at 0 for page 1.
+    -- index is by page number 1..x, while as_pdf3 uses 0..x-1 for pages
     TYPE t_pagevals IS TABLE OF VARCHAR2(32767) INDEX BY BINARY_INTEGER;
     g_pagevals      t_pagevals;
 
@@ -215,8 +228,8 @@ THE SOFTWARE.
     );
     -- callback proc. Not part of user interface
     PROCEDURE apply_footer(
-        p_page_nr       VARCHAR2
-        ,p_page_count   VARCHAR2
+        p_page_nr       NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
     -- simple 1 line header slightly into the top margin with page specific substitutions
@@ -234,8 +247,8 @@ THE SOFTWARE.
     );
     -- callback proc. Not part of user interface
     PROCEDURE apply_header (
-        p_page_nr       VARCHAR2
-        ,p_page_count   VARCHAR2
+        p_page_nr       NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
     PROCEDURE refcursor2table(
@@ -320,42 +333,47 @@ $end
                 FOR p IN g_page_procs.FIRST .. g_page_procs.LAST
                 LOOP
                     -- execute the callbacks on every page. Provide argument of page number, number of pages
-                    -- and a page specific value (set by break column in cursor2table) by replacing
-                    -- string placeholders. Beware quoting in constructing the callback string
+                    -- and a page specific value (set by break column in cursor2table) as positional bind values to 
+                    -- the dynamic sql block. The block should reference the bind values 1 time positionally
+                    -- with :page_nr, :page_count, :pageval (the names do not matter. position of the : placeholders does).
                     -- Remember that the callback has access to package global states but is not aware of
                     -- the local callstack or environment of this procedure. Must use fully qualified names
-                    -- for any procedures/functions called
+                    -- for any procedures/functions called.
+                    /*
                     DECLARE
                         l_proc CLOB := REPLACE(
                                             REPLACE(
                                                 REPLACE(g_page_procs(p), '#PAGE_NR#', i)
                                                 ,'"PAGE_COUNT#', v_page_count)
-                                            ,'!PAGE_VAL#', CASE WHEN g_pagevals.EXISTS(i-1) 
+                                            ,'!PAGE_VAL#', CASE WHEN g_pagevals.EXISTS(i) 
                                                             THEN CASE WHEN g_pageval_width IS NULL
-                                                                    THEN g_pagevals(i-1) 
-                                                                    ELSE RPAD(g_pagevals(i-1),g_pageval_width,' ')
+                                                                    THEN g_pagevals(i) 
+                                                                    ELSE RPAD(g_pagevals(i),g_pageval_width,' ')
                                                                 END
                                                             END
                                         )
                         ;
+                    */
                     BEGIN
-                        -- mypkg.function(p_page_nr => #PAGE_NR#, p_page_count => "PAGE_COUNT#, p_page_val => q'[!PAGE_VAL#]');
 --$if $$use_applog $then
 --                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
 --$end
-                        EXECUTE IMMEDIATE l_proc;
+                        --EXECUTE IMMEDIATE l_proc;
+                        EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
                     EXCEPTION
                         WHEN OTHERS THEN -- we ignore the error, but at least we print it for debugging
 $if $$use_applog $then
                             g_log.log_p(SQLERRM);
                             g_log.log_p(DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
                             g_log.log_p(DBMS_UTILITY.format_call_stack);
-                            g_log.log_p(l_proc);
+                            g_log.log_p(g_page_procs(p));
+                            g_log.log_p('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '||g_pagevals(i));
 $else
                             DBMS_OUTPUT.put_line('sqlerrm : '||SQLERRM);
                             DBMS_OUTPUT.put_line('backtrace : '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
                             DBMS_OUTPUT.put_line('callstack : '||DBMS_UTILITY.format_call_stack);
-                            DBMS_OUTPUT.put_line('p_page_procs(p): '||l_proc);
+                            DBMS_OUTPUT.put_line('p_page_procs(p): '||g_page_procs(p));
+                            DBMS_OUTPUT.put_line('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '||g_pagevals(i));
 $end
                     END;
                 END LOOP;
@@ -370,8 +388,8 @@ $end
     END set_pageval_width;
 
     PROCEDURE apply_footer(
-        p_page_nr       VARCHAR2
-        ,p_page_count   VARCHAR2
+        p_page_nr       NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     ) IS
         v_txt           VARCHAR2(32767);
@@ -379,8 +397,8 @@ $end
     BEGIN
         v_txt := REPLACE(
                     REPLACE(
-                        REPLACE(g_footer_txt, '#PAGE_NR#', p_page_nr)
-                        ,'"PAGE_COUNT#', p_page_count)
+                        REPLACE(g_footer_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font(g_footer_font_family, g_footer_style, g_footer_fontsize_pt);
@@ -406,12 +424,12 @@ $end
         g_footer_style          := p_style;
         g_footer_fontsize_pt    := p_fontsize_pt;
         g_footer_centered       := p_centered;
-        set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
+        set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
     END set_footer;
 
     PROCEDURE apply_header (
-        p_page_nr       VARCHAR2
-        ,p_page_count   VARCHAR2
+        p_page_nr       NUMBER
+        ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     ) IS
         v_txt           VARCHAR2(32767);
@@ -421,10 +439,11 @@ $end
     BEGIN
         v_txt := REPLACE(
                     REPLACE(
-                        REPLACE(g_header_txt, '#PAGE_NR#', p_page_nr)
-                        ,'"PAGE_COUNT#', p_page_count)
+                        REPLACE(g_header_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
                     ,'!PAGE_VAL#', p_page_val
                 );
+        -- line 1
         as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt);
         as_pdf3.put_txt(p_txt => v_txt
             ,p_x => CASE WHEN g_header_centered THEN x_center(v_txt)
@@ -471,7 +490,7 @@ $end
         g_header_txt_2          := p_txt_2;
         g_header_fontsize_pt_2  := p_fontsize_pt_2;
         g_header_centered_2     := p_centered_2;
-        set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => '#PAGE_NR#', p_page_count => '"PAGE_COUNT#', p_page_val => q'~!PAGE_VAL#~'); END;]');
+        set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
     END set_header;
 
     PROCEDURE set_page_proc(p_sql_block CLOB)
@@ -753,19 +772,19 @@ $end
                 IF p_break_col IS NOT NULL THEN
                     DECLARE
                         l_v             VARCHAR2(32767) := get_col_val(p_break_col, i);
-                        l_page_index    BINARY_INTEGER  := as_pdf3.get(as_pdf3.c_get_page_count) - 1;
+                        l_page_index    BINARY_INTEGER  := as_pdf3.get(as_pdf3.c_get_page_count);
                     BEGIN
-                        IF l_page_index < 0 THEN
-                            l_page_index := 0;
+                        IF l_page_index < 1 THEN
+                            l_page_index := 1;
                         END IF;
                         IF NOT g_pagevals.EXISTS(l_page_index) THEN
                             g_pagevals(l_page_index) := l_v;
-                        ELSIF g_pagevals(l_page_index) <> l_v THEN
+                        ELSIF NVL(g_pagevals(l_page_index),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
 $if $$use_applog $then
                             g_log.log_p('got column break event i='||TO_CHAR(i));
 $end
                             as_pdf3.new_page;
-                            l_page_index := as_pdf3.get(as_pdf3.c_get_page_count) - 1;
+                            l_page_index := as_pdf3.get(as_pdf3.c_get_page_count);
                             g_pagevals(l_page_index) := l_v;
                             v_y := y_top_margin - v_lineheight; 
                             show_header;
