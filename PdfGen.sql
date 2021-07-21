@@ -384,7 +384,10 @@ $end
 --                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
 --$end
                         --EXECUTE IMMEDIATE l_proc;
-                        EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
+                        -- do not try to bind a non-existent collection element
+                        EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
+                            ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END;
+
                     EXCEPTION
                         WHEN OTHERS THEN -- we ignore the error, but at least we print it for debugging
 $if $$use_applog $then
@@ -392,13 +395,17 @@ $if $$use_applog $then
                             g_log.log_p(DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
                             g_log.log_p(DBMS_UTILITY.format_call_stack);
                             g_log.log_p(g_page_procs(p));
-                            g_log.log_p('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '||g_pagevals(i));
+                            g_log.log_p('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '
+                                ||CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
+                            );
 $else
                             DBMS_OUTPUT.put_line('sqlerrm : '||SQLERRM);
                             DBMS_OUTPUT.put_line('backtrace : '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
                             DBMS_OUTPUT.put_line('callstack : '||DBMS_UTILITY.format_call_stack);
                             DBMS_OUTPUT.put_line('p_page_procs(p): '||g_page_procs(p));
-                            DBMS_OUTPUT.put_line('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '||g_pagevals(i));
+                            DBMS_OUTPUT.put_line('i='||TO_CHAR(i)||' page_count: '||TO_CHAR(v_page_count)||' page_val: '
+                                ||CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
+                            );
 $end
                     END;
                 END LOOP;
