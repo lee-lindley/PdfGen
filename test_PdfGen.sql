@@ -1,12 +1,19 @@
 -- Represents my test cases but also an example of how to use it.
 -- Explorers margins and borders along with exercising callback, headers
 -- footers and 0 width hidden column.
-CREATE OR REPLACE PACKAGE test_PdfGen AS
+--
+-- You may need to grant select on hr.employees and hr.departments to your schema owner.
+-- Or comment out test0
+--
+CREATE OR REPLACE PACKAGE test_PdfGen 
+AUTHID CURRENT_USER
+AS
 -- select test_PdfGen.test1 from dual;
 -- Double click on the BLOB column in the results in sqldeveloper (toad is similar).
 -- click on the pencil icon. Choose Download. Save the file as "x.pdf" or whatever.pdf.
 -- open in pdf viewer.
 --
+    FUNCTION test0 RETURN BLOB;
     FUNCTION test1 RETURN BLOB;
     FUNCTION test2 RETURN BLOB;
     FUNCTION test3 RETURN BLOB;
@@ -19,6 +26,7 @@ CREATE OR REPLACE PACKAGE test_PdfGen AS
     );
 END test_PdfGen;
 /
+show errors
 CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
     PROCEDURE apply_page_header(
         p_txt           VARCHAR2
@@ -33,7 +41,6 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
         -- off the page and that the margin is large enough. See set_page_format.
         --
         v_txt           VARCHAR2(400);
-        v_half_width    NUMBER;
         c_padding   CONSTANT NUMBER := 2;
         c_rf        CONSTANT NUMBER := 0.2; -- raise factor. Anton uses the term. spacing for parts of font below 0?
     BEGIN
@@ -44,10 +51,9 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font('helvetica','b',18);
-        v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-            ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
+            ,p_x => PdfGen.x_center(v_txt)
+            ,p_y => PdfGen.y_top_margin 
                 + (14 * (1 + c_rf)) + c_padding + (18 * c_rf) + c_padding
         );
         v_txt := REPLACE(
@@ -57,14 +63,100 @@ CREATE OR REPLACE PACKAGE BODY test_PdfGen AS
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font('helvetica','b',14);
-        v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-            --,p_x => as_pdf3.get(as_pdf3.c_get_margin_left)
-            ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
+            ,p_x => PdfGen.x_center(v_txt)
+            --,p_x => PdfGen.x_left_justify
+            ,p_y => PdfGen.y_top_margin
                 + (c_rf * 14) + c_padding
         );
     END apply_page_header;
+
+   FUNCTION test0 RETURN BLOB
+    IS
+        v_src       SYS_REFCURSOR;
+        v_blob      BLOB;
+        v_widths    PdfGen.t_col_widths;
+        v_headers   PdfGen.t_col_headers;
+        FUNCTION get_src RETURN SYS_REFCURSOR IS
+            l_src SYS_REFCURSOR;
+        BEGIN
+          OPEN l_src FOR
+            WITH a AS (
+                SELECT e.employee_id, e.last_name, e.first_name, d.department_name
+                    ,SUM(salary) AS salary
+                FROM hr.employees e
+                INNER JOIN hr.departments d
+                    ON d.department_id = e.department_id
+                GROUP BY GROUPING SETS(
+                    (e.employee_id, e.last_name, e.first_name, d.department_name)
+                    ,(d.department_name) -- subtotal on dept
+                    ,() -- grand total
+                )
+            ) SELECT employee_id
+                ,NVL(last_name, CASE WHEN department_name IS NULL
+                                    THEN LPAD('GRAND TOTAL:',25)
+                                    ELSE LPAD('DEPT TOTAL:',25)
+                                END
+                ) AS last_name
+                ,first_name
+                ,department_name
+                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
+            FROM a
+            ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
+            ;
+          RETURN l_src;
+        END;
+    BEGIN
+        v_src := get_src;
+        --
+        v_headers(1) := 'Employee ID';
+        v_widths(1)  := 11;
+        v_headers(2) := 'Last Name';
+        v_widths(2)  := 25;
+        v_headers(3) := 'First Name';
+        v_widths(3)  := 20;
+        -- will not print this column, just capture it for column page break
+        v_headers(4) := 'department_name';
+        v_widths(4)  := 0;
+        v_headers(5) := 'Salary';
+        v_widths(5)  := 16;
+        --
+        PdfGen.init;
+        PdfGen.set_page_format(
+            p_format            => 'LETTER' 
+            ,p_orientation      => 'PORTRAIT'
+            ,p_top_margin       => 1
+            ,p_bottom_margin    => 1
+            ,p_left_margin      => 0.75
+            ,p_right_margin     => 0.75
+        );
+        PdfGen.set_footer; -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
+        PdfGen.set_header(
+            p_txt           => 'Employee Salary Report'
+            ,p_font_family  => 'helvetica'
+            ,p_style        => 'b'
+            ,p_fontsize_pt  => 16
+            ,p_centered     => TRUE
+            ,p_txt_2        => 'Department: !PAGE_VAL#'
+            ,p_fontsize_pt_2 => 12
+            ,p_centered_2    => FALSE -- left align
+        );
+        --
+        as_pdf3.set_font('courier', 'n', 10);
+        PdfGen.refcursor2table(
+            p_src => v_src
+            ,p_widths => v_widths, p_headers => v_headers
+            ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
+            ,p_break_col => 4
+            ,p_grid_lines => FALSE
+        );
+        v_blob := PdfGen.get_pdf;
+        BEGIN
+            CLOSE v_src;
+        EXCEPTION WHEN invalid_cursor THEN NULL;
+        END;
+        RETURN v_blob;
+    END test0;
 
 FUNCTION test1
 RETURN BLOB
@@ -291,3 +383,4 @@ END test_margins;
 
 END test_PdfGen;
 /
+show errors

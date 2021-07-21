@@ -1,12 +1,17 @@
 --
--- comment this out if you do not want to use applog
+-- comment this out if you do not want to use applog. Uncomment or put this line in
+-- your deploy script if you are going to deploy and use applog.
 --ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
 --
 CREATE OR REPLACE PACKAGE PdfGen
+-- This allows writes to a directory by calling as_pdf3.save_pdf. 
+-- Think about who you give execute to. If you are going to give
+-- it to public, you might want to use invoker rights.
+--AUTHID CURRENT_USER
 AS
 /*
   Author: Lee Lindley
-  Date: 07/18/2021
+  Date: 07/20/2021
 
   Copyright (C) 2021 by Lee Lindley
 
@@ -28,59 +33,143 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-/*
-# Use Case
-The use case for this package is to replicate a small subset of the capability of
-sqlplus report generation for the scenario that you cannot (or do not want to) 
-run sqlplus, capture the output and convert it to pdf. You also gain font control
-and optional grid lines/cells for the column data values.
 
-An alternate name for this facility might be query2report.
-
-# EXAMPLE
-
-
-# Description
-
-PdfGen relies entirely on as_pdf3 by Anton Scheffer. It uses only the
-public interface. There is no mucking with the internals. The only change
-to the original package published in 2012 found in the version in this repository
-is addition of 1 constant, c_get_page_count, 
-and associated return value from the public "get" function.
-
-This package extends and enhances (replaces) the as_pdf3.cursor2table functionality with
-respect to colunn headers and widths, plus the ability to capture a column page break value
-for the page_procs callbacks, and go to a new page when the break-column value changes.
-
-Column widths may also be set to 0 for NOPRINT. Break Columns where the value is captured
-and printed in the page header via a callback can be set to 0 width and not printed with the record.
-Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
-and parse those in your callback procedure.
-
-The as_pdf3 "page_procs" callback facility is duplicated (both are called) so that
-the page break column value can be supplied in addition to the page number and page count
-that the original supported.
-
-Also provided are simplified methods for generating semi-standard page header and footer
-that are less onerous than the quoting required for generating an anonymous pl/sql block string.
-You can use these procedures as a template for building your own page_proc procedure.
-
-When you use any part of this procedure, you must use init(), and either get_pdf() or save_pdf()
-from this package instead of the ones in as_pdf3. Those call the ones in as_pdf3 in
-addition to the added functionality.
-Other than that you should be able to use as_pdf3 public functionality directly,
-mixed in with calls to PdfGen. In particular you will probably be using as_pdf3.set_font.
-
-The page x/y grid is first quadrant (i.e. 0,0 is bottom left of the page). "margin" is the area
-that the report grid is not supposed to print into, but the right margin is only respected by 
-the as_pdf3.write call, not put_text() which is used in the grid, headings and footers. 
-Up to you to keep printed record width short enough to fit or change the page size/orientation/margins.
-The lower left point of the grid print area is (0+left margin, 0+bottom margin).
-The top right point of the grid print area is ((page_height - margin_top), (page_width - margin right)).
-The grid printing starts at the top margin and will go to a new page before getting into the bottom margin.
-We write the page header and footer into the margin areas, so the word "margin" is overloaded a bit here
-because for printing the margin has nothing in it. We write in our margin. Up to you to make sure
-where you write will actually print.
+/* README.md -- do not put # in first char of line in this comment or sqlplus will puke
+ # PdfGen.sql
+ 
+ PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
+ respect to column headers and widths, plus the ability to capture a column page break value
+ for the page_procs callbacks, and go to a new page when the break-column value changes.
+ Everything is implemented using the *as_pdf3* public interface.
+ 
+ ## Use Case
+ The use case for this package is to replicate a small subset of the capability of
+ sqlplus report generation for the scenario that you cannot (or do not want to) 
+ run sqlplus,capture the output and convert it to pdf. You also gain font control
+ and optional grid lines/cells for the column data values.
+ 
+ An alternate name for this facility might be query2report.
+ 
+ There are many report generators in the world. Most of them cost money.
+ This is free, powerful enough for some common use cases,
+ and a little easier than using *as_pdf3* directly.
+ 
+ ## Example
+ 
+    CREATE OR REPLACE FUNCTION test0 RETURN BLOB
+     IS
+         v_src       SYS_REFCURSOR;
+         v_blob      BLOB;
+         v_widths    PdfGen.t_col_widths;
+         v_headers   PdfGen.t_col_headers;
+         FUNCTION get_src RETURN SYS_REFCURSOR IS
+             l_src SYS_REFCURSOR;
+         BEGIN
+           OPEN l_src FOR
+             WITH a AS (
+                 SELECT e.employee_id, e.last_name, e.first_name, d.department_name
+                     ,SUM(salary) AS salary
+                 FROM hr.employees e
+                 INNER JOIN hr.departments d
+                     ON d.department_id = e.department_id
+                 GROUP BY GROUPING SETS(
+                     (e.employee_id, e.last_name, e.first_name, d.department_name)
+                     ,(d.department_name) -- subtotal on dept
+                     ,() -- grand total
+                 )
+             ) SELECT employee_id
+                 ,NVL(last_name, CASE WHEN department_name IS NULL
+                                     THEN LPAD('GRAND TOTAL:',25)
+                                     ELSE LPAD('DEPT TOTAL:',25)
+                                 END
+                 ) AS last_name
+                 ,first_name
+                 ,department_name
+                 ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
+             FROM a
+             ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
+             ;
+           RETURN l_src;
+         END;
+     BEGIN
+         v_src := get_src;
+         --
+         v_headers(1) := 'Employee ID';
+         v_widths(1)  := 11;
+         v_headers(2) := 'Last Name';
+         v_widths(2)  := 25;
+         v_headers(3) := 'First Name';
+         v_widths(3)  := 20;
+         -- will not print this column, just capture it for column page break
+         v_headers(4) := 'department_name';
+         v_widths(4)  := 0;
+         v_headers(5) := 'Salary';
+         v_widths(5)  := 16;
+         --
+         PdfGen.init;
+         PdfGen.set_page_format(
+             p_format            => 'LETTER' 
+             ,p_orientation      => 'PORTRAIT'
+             ,p_top_margin       => 1
+             ,p_bottom_margin    => 1
+             ,p_left_margin      => 0.75
+             ,p_right_margin     => 0.75
+         );
+         PdfGen.set_footer; -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
+         PdfGen.set_header(
+             p_txt           => 'Employee Salary Report'
+             ,p_font_family  => 'helvetica'
+             ,p_style        => 'b'
+             ,p_fontsize_pt  => 16
+             ,p_centered     => TRUE
+             ,p_txt_2        => 'Department: !PAGE_VAL#'
+             ,p_fontsize_pt_2 => 12
+             ,p_centered_2   => FALSE -- left align
+         );
+         --
+         as_pdf3.set_font('courier', 'n', 10);
+         PdfGen.refcursor2table(
+             p_src => v_src
+             ,p_widths => v_widths, p_headers => v_headers
+             ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
+             ,p_break_col => 4
+             ,p_grid_lines => FALSE
+         );
+         v_blob := PdfGen.get_pdf;
+         BEGIN
+             CLOSE v_src;
+         EXCEPTION WHEN invalid_cursor THEN NULL;
+         END;
+         RETURN v_blob;
+     END test0;
+ 
+ ## Retrieve Blob and View
+ 
+ With SqlDeveloper or Toad *SELECT test3 FROM dual;* Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+ 
+ ## Results
+ 
+  ![test3_pg1](/images/test0_pg1.png)
+ 
+  ![test0_pgx](/images/test0_pgx.png)
+ 
+ ## A Few Details
+ 
+ Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
+ and printed in the page header via a callback can be captured, but not printed with the record.
+ Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
+ and parse those in your callback procedure.
+ 
+ The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
+ the page break column value can be supplied in addition to the page number and page count
+ that the original supported.
+ 
+ Also provided are simplified methods for generating semi-standard page header and footer
+ that are less onerous than the quoting required for generating an anonymous pl/sql block string.
+ You can use these procedures as a template for building your own page_proc procedure if they
+ do not meet your needs.
+ 
+ You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*.
 */
 
     --
@@ -175,12 +264,21 @@ where you write will actually print.
         ,p_filename VARCHAR2
         ,p_freeblob BOOLEAN := TRUE
     );
+
+    -- returns current left margin
+    FUNCTION x_left_justify RETURN NUMBER;
+    -- returns x_value at which to start this string with this font to right justify it
+    FUNCTION x_right_justify(p_txt VARCHAR2) RETURN NUMBER;
+    -- returns x_value at which to start this string with this font to center it on the page (not between the margins)
+    FUNCTION x_center(p_txt VARCHAR2) RETURN NUMBER;
+    -- returns y_value of the top margin. Add to this to print a header line above the margin
+    FUNCTION y_top_margin RETURN NUMBER;
 END PdfGen;
 /
 show errors
 CREATE OR REPLACE PACKAGE BODY PdfGen
 AS
-    -- pl/sql bloces given to execute immediate on every page at the very end
+    -- pl/sql blocs given to execute immediate on every page at the very end
     TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
     g_page_procs    t_page_procs;
 
@@ -277,7 +375,6 @@ $end
         ,p_page_val     VARCHAR2
     ) IS
         v_txt           VARCHAR2(32767);
-        v_half_width    NUMBER;
         c_padding       CONSTANT NUMBER := 5; --space beteen footer line and margin
     BEGIN
         v_txt := REPLACE(
@@ -287,10 +384,9 @@ $end
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font(g_footer_font_family, g_footer_style, g_footer_fontsize_pt);
-        v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => CASE WHEN g_footer_centered THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-                         ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+            ,p_x => CASE WHEN g_footer_centered THEN x_center(v_txt)
+                         ELSE x_left_justify
                     END
             ,p_y => as_pdf3.get(as_pdf3.c_get_margin_bottom) - g_footer_fontsize_pt - c_padding
             --,p_y => 20
@@ -298,7 +394,7 @@ $end
     END apply_footer;
 
     PROCEDURE set_footer(
-        p_txt           VARCHAR2
+        p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
         ,p_font_family  VARCHAR2    := 'helvetica'
         ,p_style        VARCHAR2    := 'n'
         ,p_fontsize_pt  NUMBER      := 8
@@ -319,7 +415,6 @@ $end
         ,p_page_val     VARCHAR2
     ) IS
         v_txt           VARCHAR2(32767);
-        v_half_width    NUMBER;
         c_y_padding     CONSTANT NUMBER := 8; --space between bottom heading line and margin
         c_y_padding2    CONSTANT NUMBER := 4; --space between 2 heading lines
         c_rf            CONSTANT NUMBER := 0.2; -- raise factor. Anton uses the term. Spacing so bottom of font is not right on the line
@@ -331,12 +426,11 @@ $end
                     ,'!PAGE_VAL#', p_page_val
                 );
         as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt);
-        v_half_width := as_pdf3.str_len(v_txt) / 2.0;
         as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => CASE WHEN g_header_centered THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-                         ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+            ,p_x => CASE WHEN g_header_centered THEN x_center(v_txt)
+                         ELSE x_left_justify
                     END
-            ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
+            ,p_y => y_top_margin
                     + c_y_padding + (c_rf * g_header_fontsize_pt)
                 -- go higer by line size of the 2nd line plus padding if needed
                 + CASE WHEN g_header_txt_2 IS NULL THEN 0 ELSE c_y_padding2 + ((1 + c_rf) * g_header_fontsize_pt_2) END
@@ -349,13 +443,11 @@ $end
                         ,'!PAGE_VAL#', p_page_val
                     );
             as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt_2);
-            v_half_width := as_pdf3.str_len(v_txt) / 2.0;
             as_pdf3.put_txt(p_txt => v_txt
-                ,p_x => CASE WHEN g_header_centered_2 THEN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - v_half_width
-                            ELSE as_pdf3.get(as_pdf3.c_get_margin_left)
+                ,p_x => CASE WHEN g_header_centered_2 THEN x_center(v_txt)
+                            ELSE x_left_justify
                         END
-                ,p_y => (as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)) 
-                            + c_y_padding + (c_rf * g_header_fontsize_pt_2)
+                ,p_y => y_top_margin + c_y_padding + (c_rf * g_header_fontsize_pt_2)
             );
         END IF;
     END apply_header;
@@ -420,6 +512,34 @@ $if $$use_applog $then
 $end
         as_pdf3.init;
     END init;
+    
+    FUNCTION x_left_justify
+    RETURN NUMBER
+    IS
+    BEGIN
+        RETURN as_pdf3.get(as_pdf3.c_get_margin_left);
+    END x_left_justify;
+
+    FUNCTION x_right_justify(p_txt VARCHAR2)
+    RETURN NUMBER
+    IS
+        c_x_padding CONSTANT NUMBER := 2;
+    BEGIN
+        RETURN as_pdf3.get(as_pdf3.c_get_page_width) 
+                - as_pdf3.get(as_pdf3.c_get_margin_right)
+                - as_pdf3.str_len(p_txt) 
+                - c_x_padding
+                ;
+    END x_right_justify;
+
+    FUNCTION x_center(p_txt VARCHAR2)
+    RETURN NUMBER
+    IS
+    BEGIN
+        RETURN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0)
+                - (as_pdf3.str_len(p_txt) / 2.0)
+                ;
+    END x_center;
 
     PROCEDURE set_page_format(
         p_format            VARCHAR2 := 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
@@ -436,6 +556,14 @@ $end
         as_pdf3.set_margins(p_top_margin, p_left_margin, p_bottom_margin, p_right_margin, 'inch');
     END set_page_format
     ;
+    FUNCTION y_top_margin 
+    RETURN NUMBER
+    IS
+    BEGIN
+        RETURN as_pdf3.get(as_pdf3.c_get_page_height) 
+                  - as_pdf3.get(as_pdf3.c_get_margin_top)
+        ;
+    END y_top_margin;
 
     PROCEDURE cursor2table ( 
         p_c integer
@@ -525,7 +653,7 @@ $END
                     END IF;
                     IF c <= p_headers.COUNT
                     then
-                        as_pdf3.put_txt(v_x + c_padding, v_y + c_rf * v_lineheight, p_headers(c));
+                        as_pdf3.put_txt(v_x + c_padding, v_y + (c_rf * v_lineheight), p_headers(c));
                     end if; 
                     v_x := v_x + v_col_widths(c); 
                 END LOOP;
@@ -602,9 +730,9 @@ $end
             END CASE;
        END LOOP;
 --
-        v_lineheight := as_pdf3.get(as_pdf3.c_get_fontsize) * 1.2;
+        v_lineheight := as_pdf3.get(as_pdf3.c_get_fontsize) * (1 + c_rf);
         v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) - v_lineheight
-                        ,as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)
+                        ,y_top_margin
                        ) - v_lineheight; 
 --
         show_header;
@@ -619,7 +747,7 @@ $end
             LOOP
                 IF v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) THEN
                     as_pdf3.new_page;
-                    v_y := as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top) - v_lineheight; 
+                    v_y := y_top_margin - v_lineheight; 
                     show_header;
                 END IF;
                 IF p_break_col IS NOT NULL THEN
@@ -639,7 +767,7 @@ $end
                             as_pdf3.new_page;
                             l_page_index := as_pdf3.get(as_pdf3.c_get_page_count) - 1;
                             g_pagevals(l_page_index) := l_v;
-                            v_y := as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top) - v_lineheight; 
+                            v_y := y_top_margin - v_lineheight; 
                             show_header;
                         END IF;
                     END;
@@ -655,10 +783,10 @@ $end
                     IF v_txt IS NOT NULL THEN
                         IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
                             THEN as_pdf3.put_txt(v_x + v_col_widths(c) - c_padding - as_pdf3.str_len( v_txt ) 
-                                                    ,v_y + c_rf * v_lineheight 
+                                                    ,v_y + (c_rf * v_lineheight)
                                                     ,v_txt
                                                 );
-                            ELSE as_pdf3.put_txt(v_x + c_padding, v_y + c_rf * v_lineheight, v_txt);
+                            ELSE as_pdf3.put_txt(v_x + c_padding, v_y + (c_rf * v_lineheight), v_txt);
                         END IF;
                     END IF;
                     v_x := v_x + v_col_widths(c); 

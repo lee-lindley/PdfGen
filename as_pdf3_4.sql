@@ -1,4 +1,8 @@
 CREATE OR REPLACE package as_pdf3
+-- This allows writes to a directory.
+-- Think about who you give execute to. If you are going to give
+-- it to public, you might want to use invoker rights.
+--AUTHID CURRENT_USER
 is
 /**********************************************
 **
