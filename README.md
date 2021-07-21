@@ -168,7 +168,7 @@ of the program before "succesful" completion that might be required for dbms_out
 In addition to generally useful logging, it (or something like it)
 is indispensable for debugging and development.
 
-You do not have to deploy this package and tables. There is a compile directive in _PdfGen.sql_
+You do not have to deploy this UDT and tables. There is a compile directive in _PdfGen.sql_
 that must be set to turn it on. If you comment out that line in the deploy script (along with the call
 to applog.sql), PdfGen.sql will compile just fine without it.
 
