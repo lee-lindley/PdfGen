@@ -3,7 +3,7 @@
 -- footers and 0 width hidden column.
 --
 -- You may need to grant select on hr.employees and hr.departments to your schema owner
--- If you even have that schema installed.
+-- if you even have that schema installed.
 -- This block checks and if available will compile test0 into the package.
 --
 set serveroutput on
@@ -15,7 +15,7 @@ BEGIN
     DBMS_OUTPUT.put_line('found select on hr.departments and hr.employees so compiling test0 function');
     EXECUTE IMMEDIATE q'[ALTER SESSION SET PLSQL_CCFLAGS='have_hr_schema_select:TRUE']';
 EXCEPTION WHEN OTHERS THEN
-    DBMS_OUTPUT.put_line('grant select on hr.employees and hr.departments to your schema owner if you want to see test0');
+    DBMS_OUTPUT.put_line('grant select on hr.employees and hr.departments to your schema owner and redeploy if you want to see test0');
 END;
 /
 CREATE OR REPLACE PACKAGE test_PdfGen 
@@ -31,6 +31,7 @@ $end
     FUNCTION test1 RETURN BLOB;
     FUNCTION test2 RETURN BLOB;
     FUNCTION test3 RETURN BLOB;
+    FUNCTION test4 RETURN BLOB;
     FUNCTION test_margins(p_page_format VARCHAR2, p_page_orientation VARCHAR2) RETURN BLOB;
     PROCEDURE apply_page_header(
         p_txt           VARCHAR2
@@ -414,6 +415,83 @@ END test2
         RETURN v_blob;
     END test3;
 
+
+   FUNCTION test4 RETURN BLOB
+    IS
+        v_src   SYS_REFCURSOR;
+        v_blob  BLOB;
+        v_widths PdfGen.t_col_widths;
+        v_headers PdfGen.t_col_headers;
+        FUNCTION get_src RETURN SYS_REFCURSOR IS
+            l_src SYS_REFCURSOR;
+        BEGIN
+          OPEN l_src FOR
+            SELECT 
+                view_name 
+                ,SUBSTR(comments,1,30) 
+                ,grp
+            FROM (
+                SELECT v.*, FLOOR(rownum / 36) AS grp
+                FROM (
+                    SELECT /*+ no_parallel */
+                        v.view_name 
+                        ,c.comments 
+                    FROM dictionary d
+                    INNER JOIN all_views v
+                        ON v.view_name = d.table_name
+                    LEFT OUTER JOIN all_tab_comments c
+                        ON c.table_name = v.view_name
+                    WHERE d.table_name LIKE 'ALL%'
+                    ORDER BY v.view_name
+                    FETCH FIRST 40 ROWS ONLY
+                ) v
+            )
+            ;
+          RETURN l_src;
+        END;
+    BEGIN
+        v_src := get_src;
+        --
+        v_headers(1) := 'DBA View Name';
+        v_widths(1)  := 31;
+        v_headers(2) := 'Dictionary Comments';
+        v_widths(2)  := 30;
+        -- will not print this column, just capture it for column page break
+        v_headers(3) := NULL;
+        v_widths(3)  := 0;
+        --
+        PdfGen.init;
+        PdfGen.set_page_format(
+            p_format            => 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
+            ,p_orientation      => 'PORTRAIT' -- or 'LANDSCAPE'
+            ,p_top_margin       => 1.25
+            ,p_bottom_margin    => 1
+            ,p_left_margin      => 1.25
+            ,p_right_margin     => 0.5
+        );
+        PdfGen.set_footer('Page #PAGE_NR# of "PAGE_COUNT#');
+        PdfGen.set_header('Offset Margins Data Dictionary Views for group !PAGE_VAL#');
+        --
+        -- just so we can see the margins. Not a general practice
+        as_pdf3.rect(as_pdf3.get(as_pdf3.c_get_margin_left), as_pdf3.get(as_pdf3.c_get_margin_bottom)
+                ,as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right) - as_pdf3.get(as_pdf3.c_get_margin_left)
+                ,as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top) - as_pdf3.get(as_pdf3.c_get_margin_bottom)
+            );
+        --
+        as_pdf3.set_font('courier', 'n', 10);
+        PdfGen.refcursor2table(p_src => v_src
+            ,p_widths => v_widths, p_headers => v_headers
+            ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
+            ,p_break_col => 3
+            --,p_grid_lines => FALSE
+        );
+        v_blob := PdfGen.get_pdf;
+        BEGIN
+            CLOSE v_src;
+        EXCEPTION WHEN invalid_cursor THEN NULL;
+        END;
+        RETURN v_blob;
+    END test4;
 
 FUNCTION test_margins(
     p_page_format VARCHAR2, p_page_orientation VARCHAR2

@@ -34,21 +34,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
--- README.md -- do not put # in first char of line in this comment or sqlplus will puke
--- that is why we are using -- comment instead of /**/
+-- README.md -- do not put # in first char of line in this comment or sqlplus will puke.
 -- :s/^--//
 --# PdfGen.sql
 --
---PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
---respect to column headers and widths, plus the ability to capture a column page break value
---for the page_procs callbacks, and go to a new page when the break-column value changes.
---Everything is implemented using the *as_pdf3* public interface.
+--PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
+--with respect to column headers and widths, plus the ability to capture a column
+--page break value for the page_procs callbacks, and go to a new page when the 
+--break-column value changes.  Everything is implemented using the *as_pdf3* 
+--public interface.
 --
 --## Use Case
---The use case for this package is to replicate a small subset of the capability of
---sqlplus report generation for the scenario that you cannot (or do not want to) 
+--The use case for this package is to replicate a small subset of 
+--sqlplus report generation for scenario that you cannot (or do not want to) 
 --run sqlplus,capture the output and convert it to pdf. You also gain font control
---and optional grid lines/cells for the column data values.
+--and optional grid lines/cells for the column data values vs sqlplus and the 
+--results can be more attractive.
 --
 --An alternate name for this facility might be query2report.
 --
@@ -151,44 +152,69 @@ THE SOFTWARE.
 --
 -->SELECT test0 FROM dual;
 --
---Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+--Double click on the BLOB value in the results grid. In SqlDeveloper you get a 
+--pencil icon. Click on that and choose *download* (toad is similar). Save the 
+--blob to a file named test0.pdf. Open in a pdf viewer.
 --
 --## Results
 --
--- ![test3_pg1](/images/test0_pg1.png)
+-- ![test0_pg1](/images/test0_pg1.png)
 --
 -- ![test0_pgx](/images/test0_pgx.png)
 --
+--Pdf files from test_PdfGen are in the *samples* folder. Github will display 
+--them when selected.
+--
 --## A Few Details
 --
---Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
---and printed in the page header via a callback, can be captured, but optionally not printed with the record.
---Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
---and parse those in your callback procedure.
+--Column widths may be set to 0 for NOPRINT, so Break Columns where the value is 
+--captured and printed in the page header via a callback, can be captured, but 
+--optionally not printed with the record. Note that you can concatenate mulitple 
+--column values into a string for a single non-printing break-column, and parse 
+--those in your callback procedure.
 --
---The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
---the page break column value can be supplied in addition to the page number and page count
---that the original supported. One major difference is the use of bind placeholders instead
---of direct string substitution in your pl/sql block. We follow the same convention for
---substitution strings in the built-in header and footer procedures, but internally, and
---for your own custom callbacks, you will be providing positional bind placeholders 
---for EXECUTE IMMEDIATE. This eliminates a nagging problem with quoting values 
---in page_val as well as eliminating a potential source of sql injection. Example:
+--The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
+--so that the page break column value can be supplied in addition to the page 
+--number and page count that the original supported. One major difference is the 
+--use of bind placeholders instead of direct string substitution in your pl/sql 
+--block. We follow the same convention for substitution strings in the test 
+--provided to built-in header and footer procedures, but internally rather than 
+--directly to the block. You will be providing positional bind placeholders for 
+--EXECUTE IMMEDIATE in the PL/SQL block strings you add to page_procs.  This 
+--eliminates a nagging problem with quoting as well as eliminating potential 
+--for sql injection. Example:
 --
---    set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+--    PdfGen.set_page_proc(
+--        q'[BEGIN 
+--            yourpkgname.apply_footer(
+--                p_page_nr => :page_nr
+--                ,p_page_count => :page_count
+--                ,p_page_val => :page_val); 
+--            END;
+--        ]'
+--    );
 --
---That string is then executed with:
+--That block (*g_page_procs(p)* below) is then executed with:
 --
 --    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
 --
---where i is the page number.
+--where i is the page number and g_pagevals(i) is the page specific column break
+--value. (In practice we have to look for the case where g_pagevals(i) does not 
+--exist.)
 --
---Also provided are simplified methods for generating semi-standard page header and footer.
---You can use these procedures as a template for building your own page_proc procedure if they
---do not meet your needs.
+--Also provided are simplified methods for generating semi-standard page header
+--and footer. You can use these procedures as a template for building your own 
+--page_proc procedure if they do not meet your needs.
 --
---You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*. In fact
---you are expected to do so with procedures such as *as_pdf3.set_font*.
+--You can mix and match calls to *as_pdf3* procedures and functions simultaneous
+--with *PdfGen*. In fact you are expected to do so with procedures such 
+--as *as_pdf3.set_font*.
+--
+--Be aware that the concept of *centered* in *as_pdf3* is centered on the page.
+--*PdfGen* centers between the left and right margins. If you are using 
+--*as_pdf3.write* with align=>'center' be aware of this difference. If your left
+--and write margins are the same, it will not matter.
+--
 
     --
     -- not sure why plain table collections were used in as_pdf3. I have some guesses, but 
@@ -242,9 +268,8 @@ THE SOFTWARE.
     --
     -- Both versions allow printing with or without rectangle grids around the column values (cells).
     --
-    -- If the widths are provided via either method, the grid is centered on the page irrespective of 
-    -- left and right margins (though in retrospect should probably have centered between margins 
-    -- and may in the future).
+    -- If the widths are provided via either method, the grid is centered between the margins (not
+    -- centered on the page, but between the margins).
     --
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
@@ -346,7 +371,7 @@ THE SOFTWARE.
     FUNCTION x_left_justify RETURN NUMBER;
     -- returns x_value at which to start this string with this font to right justify it
     FUNCTION x_right_justify(p_txt VARCHAR2) RETURN NUMBER;
-    -- returns x_value at which to start this string with this font to center it on the page (not between the margins)
+    -- returns x_value at which to start this string with this font to center it between the margins
     FUNCTION x_center(p_txt VARCHAR2) RETURN NUMBER;
     -- returns y_value of the top margin. Add to this value to print a header line above the margin
     FUNCTION y_top_margin RETURN NUMBER;
@@ -609,10 +634,28 @@ $end
     FUNCTION x_center(p_txt VARCHAR2)
     RETURN NUMBER
     IS
+        v_start_x       NUMBER;
+        v_left_margin   NUMBER := as_pdf3.get(as_pdf3.c_get_margin_left);
     BEGIN
-        RETURN (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0)
-                - (as_pdf3.str_len(p_txt) / 2.0)
-                ;
+        v_start_x := (v_left_margin -- x of left margin
+                        + ( (
+                              (as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right)) -- x of right margin
+                              - v_left_margin
+                              )  -- width between margins
+                              / 2.0
+                          )
+                     ) -- this gets us to the midpoint between the margins
+                        - (as_pdf3.str_len(p_txt) / 2.0);
+        IF v_start_x < v_left_margin THEN
+$if $$use_applog $then
+            g_log.log_p('x_center: text length exceeds width between margins so starting at left margin. p_txt='||p_txt);
+            g_log.log_p('v_start_x: '||TO_CHAR(v_start_x)||' v_left_margin: '||TO_CHAR(v_left_margin));
+$else
+            DBMS_OUTPUT.put_line('x_center: text length exceeds width between margins so starting at left margin. p_txt='||p_txt);
+$end
+            v_start_x := v_left_margin;
+        END IF;
+        RETURN v_start_x;
     END x_center;
 
     FUNCTION y_top_margin 
@@ -667,7 +710,7 @@ $END
         v_bulk_cnt          BINARY_INTEGER := 100;
         v_fetched_rows      BINARY_INTEGER;
         v_col_widths        t_col_widths;
-        -- new left marging for starting each line after calculating how to center the grid on the page
+        -- new left marging for starting each line after calculating how to center the grid between the margins
         v_centered_left_margin  NUMBER;
         v_x                 NUMBER;
         v_y                 NUMBER;
@@ -724,7 +767,7 @@ $END
                 IF p_bold_headers THEN
                     as_pdf3.set_font(p_family => NULL, p_style => 'B');
                 END IF;
-                v_x := v_centered_left_margin; --as_pdf3.get(as_pdf3.c_get_margin_left);
+                v_x := v_centered_left_margin; 
                 FOR c IN 1 .. v_col_cnt
                 LOOP
                     CONTINUE WHEN v_col_widths(c) = 0;
@@ -802,14 +845,32 @@ $end
         -- Now add up the column widths and we refigure the left side of page starting point to
         -- center the grid
         DECLARE
-            l_tot_width NUMBER := 0;
+            l_tot_width_cols    NUMBER := 0;
+            l_left_margin       NUMBER := as_pdf3.get(as_pdf3.c_get_margin_left);
         BEGIN
             FOR c IN 1 ..v_col_widths.COUNT
             LOOP
-                l_tot_width := l_tot_width + v_col_widths(c);
+                l_tot_width_cols := l_tot_width_cols + v_col_widths(c);
             END LOOP;
-            -- centered on page, not centered between margins. Hmmmmm
-            v_centered_left_margin := (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - (l_tot_width / 2.0);
+            v_centered_left_margin := 
+                ( l_left_margin -- x of left margin
+                    + ( (
+                          (as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right)) -- x of right margin
+                          - l_left_margin
+                          )  -- width between margins
+                          / 2.0
+                      )
+                 ) -- this gets us to the midpoint between the margins
+                - (l_tot_width_cols / 2.0);
+
+            IF v_centered_left_margin < l_left_margin THEN
+$if $$use_applog $then
+                g_log.log_p('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page but maybe not.');
+$else
+                DBMS_OUTPUT.put_line('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page, but maybe not.');
+$end
+                v_centered_left_margin := l_left_margin;
+            END IF;
         END;
 
         -- define the arrays for holding the column values from each bulk fetch
@@ -834,6 +895,10 @@ $end
 --
         show_header;
 --
+        --
+        -- Now that all the prep is done, lets get this party started writing out
+        -- the records from the cursor
+        --
         LOOP
             v_fetched_rows := DBMS_SQL.fetch_rows(p_c);
 $if $$use_applog $then
@@ -859,7 +924,10 @@ $end
                             g_pagevals(l_page_index) := l_v;
                         ELSIF NVL(g_pagevals(l_page_index),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
 $if $$use_applog $then
-                            g_log.log_p('got column break event i='||TO_CHAR(i));
+                            g_log.log_p('got column break event i='||TO_CHAR(i)
+                                ||' LastVal: '||g_pagevals(l_page_index)
+                                ||' NewVal: '||l_v
+                            );
 $end
                             as_pdf3.new_page;
                             l_page_index := as_pdf3.get(as_pdf3.c_get_page_count);
@@ -897,6 +965,8 @@ $end
         --g_y := v_y; --we cannot set g_y, but we are not writing anything else at this location
         -- as_pdf3 allowed for writing new text immediately after the grid.
         -- To do this we would need a new public funtion as_pdf3.set_global_y.
+        -- If you want to write after the grid, better to call as_pdf3.new_page
+        -- first because you will not know the Y value that ended the grid printing
     END cursor2table;
 
     PROCEDURE refcursor2table(

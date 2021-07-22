@@ -1,15 +1,18 @@
 # PdfGen.sql
 
-PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality with
-respect to column headers and widths, plus the ability to capture a column page break value
-for the page_procs callbacks, and go to a new page when the break-column value changes.
-Everything is implemented using the *as_pdf3* public interface.
+PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
+with respect to column headers and widths, plus the ability to capture a column
+page break value for the page_procs callbacks, and go to a new page when the 
+break-column value changes.  Everything is implemented using the *as_pdf3* 
+public interface.
 
 ## Use Case
-The use case for this package is to replicate a small subset of the capability of
-sqlplus report generation for the scenario that you cannot (or do not want to) 
-run sqlplus,capture the output and convert it to pdf. You also gain font control
-and optional grid lines/cells for the column data values.
+The use case for this package is to replicate a small subset of 
+sqlplus report generation for scenario that you cannot (or do not want to) 
+run sqlplus with Report Generation facilities like COLUMN/TITLE/BREAK, capture 
+the output and convert it to pdf, and/or you need the pdf file inside the 
+database as a BLOB. You also gain font control and optional grid lines/cells 
+for the column data values vs sqlplus, and the results can be more attractive.
 
 An alternate name for this facility might be query2report.
 
@@ -112,7 +115,9 @@ With SqlDeveloper or Toad
 
 >SELECT test0 FROM dual;
 
-Double click on the BLOB value in the results grid. In SqlDeveloper you get a pencil icon. Click on that and choose *download* (toad is similar). Save the blob to a file named whatever.pdf. Open in a pdf viewer.
+Double click on the BLOB value in the results grid. In SqlDeveloper you get a 
+pencil icon. Click on that and choose *download* (toad is similar). Save the 
+blob to a file named test0.pdf. Open in a pdf viewer.
 
 ## Results
 
@@ -120,66 +125,94 @@ Double click on the BLOB value in the results grid. In SqlDeveloper you get a pe
 
  ![test0_pgx](/images/test0_pgx.png)
 
-Pdf files from test_PdfGen are in the *samples* folder. Github will display them when selected.
+Pdf files from test_PdfGen are in the *samples* folder. Github will display 
+them when selected.
 
 ## A Few Details
 
-Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
-and printed in the page header via a callback, can be captured, but optionally not printed with the record.
-Note that you can concatenate mulitple column values into a string for a single non-printing break-column,
-and parse those in your callback procedure.
+Column widths may be set to 0 for NOPRINT, so Break Columns where the value is 
+captured and printed in the page header via a callback, can be captured, but 
+optionally not printed with the record. Note that you can concatenate mulitple 
+column values into a string for a single non-printing break-column, and parse 
+those in your callback procedure.
 
-The *as_pdf3* "page_procs" callback facility is duplicated (both are called) so that
-the page break column value can be supplied in addition to the page number and page count
-that the original supported. One major difference is the use of bind placeholders instead
-of direct string substitution in your pl/sql block. We follow the same convention for
-substitution strings in the built-in header and footer procedures, but internally, and
-for your own custom callbacks, you will be providing positional bind placeholders (placeholder names do not matter)
-for EXECUTE IMMEDIATE. This eliminates a nagging problem with quoting values 
-in page_val as well as eliminating a potential source of sql injection. Example:
+The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
+so that the page break column value can be supplied in addition to the page 
+number and page count that the original supported. One major difference is the 
+use of bind placeholders instead of direct string substitution in your pl/sql 
+block. We follow the original convention for substitution strings in the 
+text provided to built-in header and footer procedures, but internally rather 
+than directly to the block. You will be providing positional bind placeholders 
+for EXECUTE IMMEDIATE in the PL/SQL block strings you add to page_procs. This 
+eliminates a nagging problem with quoting as well as eliminating potential 
+for sql injection. Example:
 
-    PdfGen.set_page_proc(q'[BEGIN yourpkgname.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+    PdfGen.set_page_proc(
+        q'[BEGIN 
+            yourpkgname.apply_footer(
+                p_page_nr => :page_nr
+                ,p_page_count => :page_count
+                ,p_page_val => :page_val); 
+            END;
+        ]'
+    );
 
 That block (*g_page_procs(p)* below) is then executed with:
 
     EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
 
-where i is the page number and g_pagevals(i) is the page specific column break value. 
+where i is the page number and g_pagevals(i) is the page specific column break
+value. (In practice we have to look for the case where g_pagevals(i) does not 
+exist.)
 
-Also provided are simplified methods for generating semi-standard page header and footer.
-You can use these procedures as a template for building your own page_proc procedure if they
-do not meet your needs.
+Also provided are simplified methods for generating semi-standard page header
+and footer. You can use these procedures as a template for building your own 
+page_proc procedure if they do not meet your needs.
 
-You can mix and match calls to *as_pdf3* procedures and functions simultaneous with *PdfGen*. In fact
-you are expected to do so with procedures such as *as_pdf3.set_font*.
+You can mix and match calls to *as_pdf3* procedures and functions simultaneous
+with *PdfGen*. In fact you are expected to do so with procedures such 
+as *as_pdf3.set_font*.
+
+Be aware that the concept of *centered* in *as_pdf3* is centered on the page.
+*PdfGen* centers between the left and right margins. If you are using 
+*as_pdf3.write* with align=>'center' be aware of this difference. If your left
+and write margins are the same, it will not matter.
 
 # as_pdf3_4.sql
 
-This copy of the 2012 original release by Anton Scheffer (http://technology.amis.nl and http://technology.amis.nl/?p=17718
-) 
-has only two small changes. I added constant _c_get_page_count_ and an associated addition to the public function _get()_.
-If you have already installed (and perhaps modified) your own version, you will have no trouble locating
-these 2 changes and implementing them.
+This copy of the 2012 original release by Anton Scheffer 
+(http://technology.amis.nl and http://technology.amis.nl/?p=17718) 
+has only two small changes. I added constant *c_get_page_count* and an 
+associated addition to the public function *get()*.  If you have already 
+installed (and perhaps modified) your own version, you will have no trouble 
+locating these 2 changes and implementing them.
 
 # applog.sql
 
-A general purpose database application logging facility, the core is an object oriented
-user defined type with methods for writing log records to a table.
+A general purpose database application logging facility, the core is an object 
+oriented user defined type with methods for writing log records to a table.
 Since the autonomous transactions write independently, you can get status
-of the program before "succesful" completion that might be required for dbms_output.
-In addition to generally useful logging, it (or something like it)
-is indispensable for debugging and development.
+of the program before "succesful" completion that might be required for 
+dbms_output.  In addition to generally useful logging, it (or something like 
+it) is indispensable for debugging and development.
 
-You do not have to deploy this UDT and tables. There is a compile directive in _PdfGen.sql_
-that must be set to turn it on. If you comment out that line in the deploy script (along with the call
-to applog.sql), PdfGen.sql will compile just fine without it.
+You do not have to deploy this UDT and tables. There is a compile directive 
+in *PdfGen.sql* that must be set to turn it on. If you comment out that line 
+in the deploy script (along with the call to applog.sql), PdfGen.sql will 
+compile just fine without it.
 
 # test_PdfGen.sql
 
-A package that represents my test cases as well as examples of how to use it. There is no reason
-for you to deploy it except for study. Then by all means proceed. You can always drop it later.
+A package that represents my test cases as well as examples of how to use it.
+There is no reason for you to deploy it except for study. Install it in your
+development environment for reference. You can always drop it later.
+
+Note: If your schema does not have SELECT priv directly (role doesn't count)
+on the database sample *HR* schema tables *employees* and *departments*, 
+then *test0* is not included. In the *test* folder is a script to add those 
+grants (though it is simple enough to just do so manually).
 
 # deploy.sql
 
-Called from sqlplus, will deploy everything. You should comment out anything you do not want or just use it
-as a guide.
+Called from sqlplus, will deploy everything. You should comment out anything 
+you do not want or just use it as a guide.
