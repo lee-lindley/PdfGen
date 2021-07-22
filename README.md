@@ -120,6 +120,8 @@ Double click on the BLOB value in the results grid. In SqlDeveloper you get a pe
 
  ![test0_pgx](/images/test0_pgx.png)
 
+Pdf files from test_PdfGen are in the *samples* folder. Github will display them when selected.
+
 ## A Few Details
 
 Column widths may be set to 0 for NOPRINT, so Break Columns where the value is captured
