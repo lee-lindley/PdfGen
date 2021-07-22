@@ -191,22 +191,35 @@ THE SOFTWARE.
 --you are expected to do so with procedures such as *as_pdf3.set_font*.
 
     --
-    -- not sure why plain table collections were used in the original. This is easier and apparently faster (not that it matters).
-    -- It may be so that you can provide a default value of NULL which I don't think you can do for index by table variables.
-    -- This version supplies two refcursor2table footprints that can resolve not providing widths so not an issue here.
+    -- not sure why plain table collections were used in as_pdf3. I have some guesses, but 
+    -- it does not matter. I like this style better and, though it is not relevant,
+    -- was a little shocked to find out it can be slightly faster than plain table collections.
     --
     TYPE t_col_widths IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
     TYPE t_col_headers IS TABLE OF VARCHAR2(4000) INDEX BY BINARY_INTEGER;
 
     -- you can put page specific values here for !PAGE_VAL# yourself, though it is 
-    -- not the intended design which is for column breaks. 
-    -- index is by page number 1..x, while as_pdf3 uses 0..x-1 for pages
+    -- not the intended design which is for column breaks.  The values are not
+    -- used until we "finish" the report which is during get_pdf or save_pdf.
+    -- Any point up to those calls you can muck with this table if you so desire.
+    --
+    -- index is by page number 1..x, while as_pdf3 uses 0..x-1 for indexes to the pages
     TYPE t_pagevals IS TABLE OF VARCHAR2(32767) INDEX BY BINARY_INTEGER;
     g_pagevals      t_pagevals;
 
     -- must call this init which also calls as_pdf3.init
     PROCEDURE init;
 
+    -- use these instead of as_pdf3 versions (which are called by these).
+    FUNCTION get_pdf RETURN BLOB;
+    PROCEDURE save_pdf(
+        p_dir       VARCHAR2
+        ,p_filename VARCHAR2
+        ,p_freeblob BOOLEAN := TRUE
+    );
+
+    -- combines functionality of mulitple as_pdf3 calls and uses American default values.
+    -- not arguing those are better - just what I am accustomed to.
     PROCEDURE set_page_format(
         p_format            VARCHAR2 := 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
         ,p_orientation      VARCHAR2 := 'PORTRAIT' -- or 'LANDSCAPE'
@@ -217,9 +230,58 @@ THE SOFTWARE.
         ,p_left_margin      NUMBER := 0.75
         ,p_right_margin     NUMBER := 0.75
     );
+
+    -- two styles of report grid. The first either equal distances the columns across the printable area
+    -- or if true, uses your query column names to determine the width of each column. Pad your names
+    -- with spaces (i.e. colval AS "Column Header 1    ") to set the widths. This can be a convenient
+    -- shortcut for simple results.
+    --
+    -- Note that there are limitations to this and I would not try to use query column headers longer
+    -- than 30 characters (though I suspect up to 128 MIGHT work). At some point it is just unweildly
+    -- and you would be better off setting up the header/width arrays.
+    --
+    -- Both versions allow printing with or without rectangle grids around the column values (cells).
+    --
+    -- If the widths are provided via either method, the grid is centered on the page irrespective of 
+    -- left and right margins (though in retrospect should probably have centered between margins 
+    -- and may in the future).
+    --
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
+        -- if true, calculate the headers and widths from query column names
+        -- if false, then there are no column headers printed and column start positions
+        -- are equally spaced across the printable area
+        ,p_col_headers              BOOLEAN         := FALSE 
+        -- index to column to perform a page break upon value change
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+    );
+    -- the second style uses arrays of column header values and column widths you provide,
+    -- again centering the results on the page.
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
+        -- you can provide width values and NOT provide headers if you do not want them to print
+        ,p_widths                   t_col_widths    
+        ,p_headers                  t_col_headers  
+        ,p_bold_headers             BOOLEAN         := FALSE
+        ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
+        -- index to column to perform a page break upon value change
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+    );
+
+
+    --
+    -- register a callback procedure or simple anonymous block to finish off pages at the end.
+    -- Normally used for page headers and footers. The dynamic SQL string is called with EXECUTE IMMEDIATE
+    -- and is passed 3 bind values with the USING clause that you must consume whether you use them or not.
+    --
     PROCEDURE set_page_proc(p_sql_block CLOB);
     -- Examples:
+    -- a callback to a procedure in your own package
     -- set_page_proc(q'[BEGIN yourpkgname.xyz_apply_header(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+    --
+    -- a custom footer:
     -- set_page_proc(
     --    q'[DECLARE
     --        p_page_nr     NUMBER := :page_nr;
@@ -243,7 +305,7 @@ THE SOFTWARE.
     --    END;]'
     --);
     
-    -- simple 1 line footer inside the bottom margin with page specific substitutions
+    -- simple 1 line footer inside the bottom margin 
     PROCEDURE set_footer(
         p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
         ,p_font_family  VARCHAR2    := 'helvetica'
@@ -276,33 +338,10 @@ THE SOFTWARE.
         ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
-    PROCEDURE refcursor2table(
-        p_src                       SYS_REFCURSOR
-        -- if true, calculate the headers and widths from query column names
-        ,p_col_headers              BOOLEAN         := FALSE 
-        -- index to column to perform a page break upon value change
-        ,p_break_col                BINARY_INTEGER  := NULL
-        ,p_grid_lines               BOOLEAN         := TRUE
-    );
-    PROCEDURE refcursor2table(
-        p_src                       SYS_REFCURSOR
-        ,p_widths                   t_col_widths    
-        ,p_headers                  t_col_headers  
-        ,p_bold_headers             BOOLEAN         := FALSE
-        ,p_char_widths_conversion   BOOLEAN         := FALSE
-        -- index to column to perform a page break upon value change
-        ,p_break_col                BINARY_INTEGER  := NULL
-        ,p_grid_lines               BOOLEAN         := TRUE
-    );
 
-    -- use these instead of as_pdf3 versions (which are called by these).
-    FUNCTION get_pdf RETURN BLOB;
-    PROCEDURE save_pdf(
-        p_dir       VARCHAR2
-        ,p_filename VARCHAR2
-        ,p_freeblob BOOLEAN := TRUE
-    );
-
+    --
+    -- convenience functions for calculating where to start writing for as_pdf3.put_txt.
+    --
     -- returns current left margin
     FUNCTION x_left_justify RETURN NUMBER;
     -- returns x_value at which to start this string with this font to right justify it
@@ -311,12 +350,14 @@ THE SOFTWARE.
     FUNCTION x_center(p_txt VARCHAR2) RETURN NUMBER;
     -- returns y_value of the top margin. Add to this value to print a header line above the margin
     FUNCTION y_top_margin RETURN NUMBER;
+
 END PdfGen;
 /
 show errors
 CREATE OR REPLACE PACKAGE BODY PdfGen
 AS
     -- pl/sql blocs given to execute immediate on every page at the very end
+    -- assigned via set_page_proc
     TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
     g_page_procs    t_page_procs;
 
@@ -334,16 +375,18 @@ AS
     g_header_txt_2          VARCHAR2(32767);
     g_header_fontsize_pt_2  NUMBER;
     g_header_centered_2     BOOLEAN;
-    g_pageval_width         NUMBER;
 
 $if $$use_applog $then
     g_log                   applog_udt;
 $end
 
     PROCEDURE apply_page_procs
-    -- get_pdf and save_pdf still call the as_pdf3 versions which call the as_pdf3 version of finish_pdf.
-    -- that applies the as_pdf3 page procs which we are not using, but you might.
     IS
+    --
+    -- get_pdf and save_pdf still call the as_pdf3 versions of get_pdf and save_pdf,
+    -- which call as_pdf3.finish_pdf that applies the as_pdf3 page procs. I do not know why
+    -- you would use those as oppsed to PdfGen page procs, but you can.
+    --
         v_page_count    BINARY_INTEGER;
     BEGIN
         IF g_page_procs.COUNT > 0
@@ -364,26 +407,10 @@ $end
                     -- Remember that the callback has access to package global states but is not aware of
                     -- the local callstack or environment of this procedure. Must use fully qualified names
                     -- for any procedures/functions called.
-                    /*
-                    DECLARE
-                        l_proc CLOB := REPLACE(
-                                            REPLACE(
-                                                REPLACE(g_page_procs(p), '#PAGE_NR#', i)
-                                                ,'"PAGE_COUNT#', v_page_count)
-                                            ,'!PAGE_VAL#', CASE WHEN g_pagevals.EXISTS(i) 
-                                                            THEN CASE WHEN g_pageval_width IS NULL
-                                                                    THEN g_pagevals(i) 
-                                                                    ELSE RPAD(g_pagevals(i),g_pageval_width,' ')
-                                                                END
-                                                            END
-                                        )
-                        ;
-                    */
                     BEGIN
 --$if $$use_applog $then
 --                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
 --$end
-                        --EXECUTE IMMEDIATE l_proc;
                         -- do not try to bind a non-existent collection element
                         EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
                             ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END;
@@ -413,12 +440,6 @@ $end
         END IF;
     END apply_page_procs;
 
-    PROCEDURE set_pageval_width(p_width NUMBER)
-    IS
-    BEGIN
-        g_pageval_width := p_width;
-    END set_pageval_width;
-
     PROCEDURE apply_footer(
         p_page_nr       NUMBER
         ,p_page_count   NUMBER
@@ -427,6 +448,8 @@ $end
         v_txt           VARCHAR2(32767);
         c_padding       CONSTANT NUMBER := 5; --space beteen footer line and margin
     BEGIN
+        -- we use the original text substitution strings, but in a text variable, 
+        -- not a pl/sql block.
         v_txt := REPLACE(
                     REPLACE(
                         REPLACE(g_footer_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
@@ -592,6 +615,15 @@ $end
                 ;
     END x_center;
 
+    FUNCTION y_top_margin 
+    RETURN NUMBER
+    IS
+    BEGIN
+        RETURN as_pdf3.get(as_pdf3.c_get_page_height) 
+                  - as_pdf3.get(as_pdf3.c_get_margin_top)
+        ;
+    END y_top_margin;
+
     PROCEDURE set_page_format(
         p_format            VARCHAR2 := 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
         ,p_orientation      VARCHAR2 := 'PORTRAIT' -- or 'LANDSCAPE'
@@ -607,15 +639,8 @@ $end
         as_pdf3.set_margins(p_top_margin, p_left_margin, p_bottom_margin, p_right_margin, 'inch');
     END set_page_format
     ;
-    FUNCTION y_top_margin 
-    RETURN NUMBER
-    IS
-    BEGIN
-        RETURN as_pdf3.get(as_pdf3.c_get_page_height) 
-                  - as_pdf3.get(as_pdf3.c_get_margin_top)
-        ;
-    END y_top_margin;
 
+    -- write the report grid onto the page objects creating new pages as needed
     PROCEDURE cursor2table ( 
         p_c integer
         -- count on these being continuous starting at index=1 and matching the query columns
@@ -638,15 +663,18 @@ $END
         v_date_tab          DBMS_SQL.date_table;
         v_number_tab        DBMS_SQL.number_table;
         v_string_tab        DBMS_SQL.varchar2_table;
+
         v_bulk_cnt          BINARY_INTEGER := 100;
         v_fetched_rows      BINARY_INTEGER;
         v_col_widths        t_col_widths;
-        v_centered_left_margin  NUMBER := as_pdf3.get(as_pdf3.c_get_margin_left);
+        -- new left marging for starting each line after calculating how to center the grid on the page
+        v_centered_left_margin  NUMBER;
         v_x                 NUMBER;
         v_y                 NUMBER;
         v_lineheight        NUMBER;
         v_txt               VARCHAR2(32767);
 
+        -- based on dbms_sql column info
         FUNCTION lookup_col_type(p_col_type BINARY_INTEGER)
         RETURN VARCHAR2 -- D ate, N umber, C har
         IS
@@ -662,7 +690,10 @@ $END
         END;
 
 --
-        FUNCTION get_col_val(c BINARY_INTEGER, i BINARY_INTEGER)
+        FUNCTION get_col_val(
+            c BINARY_INTEGER -- column index starting at 1
+            ,i BINARY_INTEGER -- record number for this bulk fetch
+        )
         RETURN VARCHAR2
         IS
             v_str VARCHAR2(32767);
@@ -683,7 +714,7 @@ $END
                 ELSE
                     NULL;
             END CASE;
-          RETURN v_str;
+            RETURN v_str;
         END;
 --
         PROCEDURE show_header
@@ -714,7 +745,9 @@ $END
                 END IF;
             END IF;
         END;
---
+    --
+    -- Start procedcure body
+    --
     BEGIN
 $IF DBMS_DB_VERSION.VER_LE_10 $THEN
         DBMS_SQL.describe_columns2( p_c, v_col_cnt, v_desc_tab );
@@ -725,6 +758,8 @@ $END
         IF as_pdf3.get(as_pdf3.c_get_current_font) IS NULL THEN 
             as_pdf3.set_font('courier', 12);
         END IF;
+
+        -- check for something wrong with widths array
         IF p_widths IS NOT NULL AND p_widths.COUNT <> v_col_cnt THEN
 $if $$use_applog $then
             g_log.log_p('cursor2table called with p_widths.COUNT='||TO_CHAR(p_widths.COUNT)||' but query column count is '||TO_CHAR(v_col_cnt)||', so p_widths is ignored');
@@ -732,7 +767,10 @@ $else
             DBMS_OUTPUT.put_line('cursor2table called with p_widths.COUNT='||TO_CHAR(p_widths.COUNT)||' but query column count is '||TO_CHAR(v_col_cnt)||', so p_widths is ignored');
 $end
         END IF;
+
+        -- 3 cases of provided widths
         If p_widths IS NULL OR p_widths.COUNT < v_col_cnt THEN
+            -- 1) widths not provided or not correctly. Split the start positions across the printable area.
             DECLARE
                 l_col_width NUMBER := ROUND((as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_left) - as_pdf3.get(as_pdf3.c_get_margin_right)) / v_col_cnt, 1);
             BEGIN
@@ -742,8 +780,10 @@ $end
                 END LOOP;
             END;
         ELSIF p_char_widths_conversion THEN 
+            -- 2) widths are provided in character string length numbers. We assume courier
+            -- for the sake of estimating the width. Likely worst case.
             DECLARE
-                l_font_width number := 0.61 * as_pdf3.get(as_pdf3.c_get_fontsize); -- assumes courier font width
+                l_font_width number := 0.61 * as_pdf3.get(as_pdf3.c_get_fontsize); -- assumes courier font width proportion
             BEGIN
                 FOR c IN 1 .. p_widths.COUNT
                 LOOP
@@ -751,12 +791,16 @@ $end
                 END LOOP;
             END;
         ELSE
+            -- 3) as in as_pdf3 the user gives absolute width in some units I never bothered to be sure about
+            -- but I think is points.
             FOR c IN 1 .. p_widths.COUNT
             LOOP
                 v_col_widths(c) := p_widths(c);
             END LOOP;
         END IF;
 
+        -- Now add up the column widths and we refigure the left side of page starting point to
+        -- center the grid
         DECLARE
             l_tot_width NUMBER := 0;
         BEGIN
@@ -764,9 +808,11 @@ $end
             LOOP
                 l_tot_width := l_tot_width + v_col_widths(c);
             END LOOP;
+            -- centered on page, not centered between margins. Hmmmmm
             v_centered_left_margin := (as_pdf3.get(as_pdf3.c_get_page_width) / 2.0) - (l_tot_width / 2.0);
         END;
 
+        -- define the arrays for holding the column values from each bulk fetch
         FOR c IN 1 .. v_col_cnt
         LOOP
             CASE lookup_col_type(v_desc_tab(c).col_type)
@@ -833,10 +879,12 @@ $end
                     v_txt := get_col_val(c, i);
                     IF v_txt IS NOT NULL THEN
                         IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
+                            -- need to right justify numbers.
                             THEN as_pdf3.put_txt(v_x + v_col_widths(c) - c_padding - as_pdf3.str_len( v_txt ) 
                                                     ,v_y + (c_rf * v_lineheight)
                                                     ,v_txt
                                                 );
+                            -- dates and strings left justify
                             ELSE as_pdf3.put_txt(v_x + c_padding, v_y + (c_rf * v_lineheight), v_txt);
                         END IF;
                     END IF;
@@ -847,6 +895,8 @@ $end
             EXIT WHEN v_fetched_rows != v_bulk_cnt;
         END LOOP; -- main fetch loop      
         --g_y := v_y; --we cannot set g_y, but we are not writing anything else at this location
+        -- as_pdf3 allowed for writing new text immediately after the grid.
+        -- To do this we would need a new public funtion as_pdf3.set_global_y.
     END cursor2table;
 
     PROCEDURE refcursor2table(
@@ -897,7 +947,13 @@ $END
                 v_headers(i) := v_desc_tab(i).col_name;
             END LOOP;
         END IF;
-        cursor2table(v_cx, v_widths, v_headers, p_col_headers, TRUE, p_break_col, p_grid_lines);
+        cursor2table(v_cx
+                ,CASE WHEN p_col_headers THEN v_widths END
+                ,CASE WHEN p_col_headers THEN v_headers END
+                ,p_col_headers -- bold
+                , TRUE
+                ,p_break_col, p_grid_lines
+        );
         DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
