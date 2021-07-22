@@ -1,4 +1,7 @@
-create role hr_select;
+prompt Enter name of schema where you will deploy test_PdfGen when prompted
+GRANT SELECT ON hr.employees TO &&deploy_test_schema;
+GRANT SELECT ON hr.departments TO &&deploy_test_schema;
+/*
 begin
     for r in (
         select 't' as t, table_name from dba_tables where owner = 'HR'
@@ -10,12 +13,8 @@ begin
             ||case when r.t = 't' then ',insert,update,delete' end
             ||' on hr.'
             ||r.table_name
-            ||' to hr_select';
+            ||' to '||&deploy_test_schema;
     end loop;
 end;
 /
-prompt grant hr_select to yourschemaname;
---grant hr_select to lee;
-grant select on hr.employees to lee;
-grant select on hr.departments to lee;
---select * from dba_tab_privs where grantee = 'HR_SELECT';
+*/

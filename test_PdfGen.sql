@@ -19,7 +19,6 @@ EXCEPTION WHEN OTHERS THEN
 END;
 /
 CREATE OR REPLACE PACKAGE test_PdfGen 
-AUTHID CURRENT_USER
 AS
 -- select test_PdfGen.test1 from dual;
 -- Double click on the BLOB column in the results in sqldeveloper (toad is similar).
@@ -166,11 +165,27 @@ $if $$have_hr_schema_select $then
             ,p_break_col => 4
             ,p_grid_lines => FALSE
         );
-        v_blob := PdfGen.get_pdf;
         BEGIN
             CLOSE v_src;
         EXCEPTION WHEN invalid_cursor THEN NULL;
         END;
+
+
+        v_src := get_src;
+        as_pdf3.new_page; 
+        PdfGen.refcursor2table(
+            p_src => v_src
+            ,p_widths => v_widths, p_headers => v_headers
+            ,p_bold_headers => FALSE, p_char_widths_conversion => TRUE
+            ,p_break_col => 4
+            ,p_grid_lines => TRUE
+        );
+        BEGIN
+            CLOSE v_src;
+        EXCEPTION WHEN invalid_cursor THEN NULL;
+        END;
+
+        v_blob := PdfGen.get_pdf;
         RETURN v_blob;
     END test0;
 $end
@@ -182,8 +197,11 @@ RETURN BLOB
 AS
     v_src   SYS_REFCURSOR;
     v_blob  BLOB;
-BEGIN
-    OPEN v_src FOR
+    FUNCTION l_getsrc RETURN SYS_REFCURSOR
+    IS
+        l_src SYS_REFCURSOR;
+    BEGIN
+      OPEN l_src FOR
         SELECT 
             view_name AS 
 "Dictionary View Name          "
@@ -191,7 +209,7 @@ BEGIN
 "Comments                      "
             ,grp AS
 "grp"
-        FROM (
+          FROM (
             SELECT v.*, FLOOR(rownum / 36) AS grp
             FROM (
                 SELECT /*+ no_parallel */
@@ -206,14 +224,19 @@ BEGIN
                 ORDER BY v.view_name
                 FETCH FIRST 40 ROWS ONLY
             ) v
-        )
-        ;
+          )
+          ;
+        RETURN l_src;
+    END;
+BEGIN
+
     PdfGen.init;
     PdfGen.set_page_format('LETTER','PORTRAIT');
     PdfGen.set_footer('Page #PAGE_NR# of "PAGE_COUNT#', p_centered => FALSE);
     PdfGen.set_header(p_txt => 'Data Dictionary Views Letter Portrait'
-                    ,p_txt_2 => 'Page_Nr=#PAGE_NR# Page_Count="PAGE_COUNT# page_val=!PAGE_VAL#'
+                    ,p_txt_2 => 'For page=1 bold heders and not grid. Page2 has grid, no headers, no col widths so evenly distributed'
                     ,p_centered_2 => FALSE
+                    ,p_fontsize_pt_2 => 8
     );
 
     -- just so we can see the margins
@@ -223,15 +246,28 @@ BEGIN
         );
 
     as_pdf3.set_font('courier', 'n', 10);
+    v_src := l_getsrc;
     PdfGen.refcursor2table(p_src => v_src
         ,p_col_headers => TRUE
         ,p_grid_lines => FALSE
     );
-    v_blob := PdfGen.get_pdf;
     BEGIN
         CLOSE v_src;
     EXCEPTION WHEN invalid_cursor THEN NULL;
     END;
+
+    v_src := l_getsrc;
+    as_pdf3.new_page; 
+    PdfGen.refcursor2table(p_src => v_src
+        ,p_col_headers => FALSE
+        ,p_grid_lines => TRUE
+    );
+    BEGIN
+        CLOSE v_src;
+    EXCEPTION WHEN invalid_cursor THEN NULL;
+
+    END;
+    v_blob := PdfGen.get_pdf;
     RETURN v_blob;
 END test1
 ;
