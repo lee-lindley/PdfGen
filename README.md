@@ -6,19 +6,31 @@ page break value for the page_procs callbacks, and go to a new page when the
 break-column value changes.  Everything is implemented using the *as_pdf3* 
 public interface.
 
+There are many report generators in the world. Most of them cost money.  This 
+is free, powerful enough for some common use cases, and a little easier than 
+using *as_pdf3* directly.
+
 ## Use Case
-The use case for this package is to replicate a small subset of 
-sqlplus report generation for scenario that you cannot (or do not want to) 
-run sqlplus with Report Generation facilities like COLUMN/TITLE/BREAK, capture 
-the output and convert it to pdf, and/or you need the pdf file inside the 
-database as a BLOB. You also gain font control and optional grid lines/cells 
-for the column data values vs sqlplus, and the results can be more attractive.
 
-An alternate name for this facility might be query2report.
+The use case for this package is to perform a small subset of sqlplus report 
+generation directly inside the database. (You can question that goal and 
+may not share it. The author would have prefered to use Unix tools on an 
+ETL server, but it was not available for the task, while a facility for 
+storing and sharing BLOB's from the database was.)
 
-There are many report generators in the world. Most of them cost money.
-This is free, powerful enough for some common use cases,
-and a little easier than using *as_pdf3* directly.
+Required features include page headers and footers with page break column 
+values and hidden columns.  SQL already provides the ability to produce 
+Subtotals and Totals using Grouping Sets, so that feature of sqlplus 
+reports is redundant. Rather than pulling the data out to a client sqlplus 
+session, converting to PDF, then loading it back into the database as a 
+BLOB, we do so directly in PL/SQL.
+
+We also gain page format, margins, and font control, plus optional grid 
+lines/cells for the column data values. We produce a more attractive finished 
+product than can be generated from sqlplus.
+
+There are enough similarties to sqlplus report generation that it should be 
+familiar and relatively easy to convert existing reports.
 
 ## Example
 
@@ -134,7 +146,8 @@ Column widths may be set to 0 for NOPRINT, so Break Columns where the value is
 captured and printed in the page header via a callback, can be captured, but 
 optionally not printed with the record. Note that you can concatenate mulitple 
 column values into a string for a single non-printing break-column, and parse 
-those in your callback procedure.
+those in your callback procedure if grouping/breaking on multiple columns
+is needed.
 
 The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 so that the page break column value can be supplied in addition to the page 
@@ -142,10 +155,10 @@ number and page count that the original supported. One major difference is the
 use of bind placeholders instead of direct string substitution in your pl/sql 
 block. We follow the original convention for substitution strings in the 
 text provided to built-in header and footer procedures, but internally rather 
-than directly to the block. You will be providing positional bind placeholders 
-for EXECUTE IMMEDIATE in the PL/SQL block strings you add to page_procs. This 
-eliminates a nagging problem with quoting as well as eliminating potential 
-for sql injection. Example:
+than directly to the anonymous block. You will be providing positional bind 
+placeholders for EXECUTE IMMEDIATE in the PL/SQL block strings you add to 
+page_procs. This solves a nagging problem with quoting as well as 
+eliminating potential of sql injection. Example:
 
     PdfGen.set_page_proc(
         q'[BEGIN 
@@ -159,11 +172,13 @@ for sql injection. Example:
 
 That block (*g_page_procs(p)* below) is then executed with:
 
-    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
+    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
+        -- do not try to bind a non-existent collection element
+        ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
+    ;
 
 where i is the page number and g_pagevals(i) is the page specific column break
-value. (In practice we have to look for the case where g_pagevals(i) does not 
-exist.)
+value captured while the query result set was fetched and rendered. 
 
 Also provided are simplified methods for generating semi-standard page header
 and footer. You can use these procedures as a template for building your own 
@@ -173,7 +188,7 @@ You can mix and match calls to *as_pdf3* procedures and functions simultaneous
 with *PdfGen*. In fact you are expected to do so with procedures such 
 as *as_pdf3.set_font*.
 
-Be aware that the concept of *centered* in *as_pdf3* is centered on the page.
+Be aware that the concept of *centered* in *as_pdf3* means centered on the page.
 *PdfGen* centers between the left and right margins. If you are using 
 *as_pdf3.write* with align=>'center' be aware of this difference. If your left
 and write margins are the same, it will not matter.

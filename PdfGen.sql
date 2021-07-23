@@ -34,6 +34,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+--
+-- https://github.com/lee-lindley/PdfGen
+--
 -- README.md -- do not put # in first char of line in this comment or sqlplus will puke.
 -- :s/^--//
 --# PdfGen.sql
@@ -44,18 +47,31 @@ THE SOFTWARE.
 --break-column value changes.  Everything is implemented using the *as_pdf3* 
 --public interface.
 --
+--There are many report generators in the world. Most of them cost money.  This 
+--is free, powerful enough for some common use cases, and a little easier than 
+--using *as_pdf3* directly.
+--
 --## Use Case
---The use case for this package is to replicate a small subset of 
---sqlplus report generation for scenario that you cannot (or do not want to) 
---run sqlplus,capture the output and convert it to pdf. You also gain font control
---and optional grid lines/cells for the column data values vs sqlplus and the 
---results can be more attractive.
 --
---An alternate name for this facility might be query2report.
+--The use case for this package is to perform a small subset of sqlplus report 
+--generation directly inside the database. (You can question that goal and 
+--may not share it. The author would have prefered to use Unix tools on an 
+--ETL server, but it was not available for the task, while a facility for 
+--storing and sharing BLOB's from the database was.)
 --
---There are many report generators in the world. Most of them cost money.
---This is free, powerful enough for some common use cases,
---and a little easier than using *as_pdf3* directly.
+--Required features include page headers and footers with page break column 
+--values and hidden columns.  SQL already provides the ability to produce 
+--Subtotals and Totals using Grouping Sets, so that feature of sqlplus 
+--reports is redundant. Rather than pulling the data out to a client sqlplus 
+--session, converting to PDF, then loading it back into the database as a 
+--BLOB, we do so directly in PL/SQL.
+--
+--We also gain page format, margins, and font control, plus optional grid 
+--lines/cells for the column data values. We produce a more attractive finished 
+--product than can be generated from sqlplus.
+--
+--There are enough similarties to sqlplus report generation that it should be 
+--familiar and relatively easy to convert existing reports.
 --
 --## Example
 --
@@ -171,18 +187,19 @@ THE SOFTWARE.
 --captured and printed in the page header via a callback, can be captured, but 
 --optionally not printed with the record. Note that you can concatenate mulitple 
 --column values into a string for a single non-printing break-column, and parse 
---those in your callback procedure.
+--those in your callback procedure if grouping/breaking on multiple columns
+--is needed.
 --
 --The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 --so that the page break column value can be supplied in addition to the page 
 --number and page count that the original supported. One major difference is the 
 --use of bind placeholders instead of direct string substitution in your pl/sql 
---block. We follow the same convention for substitution strings in the test 
---provided to built-in header and footer procedures, but internally rather than 
---directly to the block. You will be providing positional bind placeholders for 
---EXECUTE IMMEDIATE in the PL/SQL block strings you add to page_procs.  This 
---eliminates a nagging problem with quoting as well as eliminating potential 
---for sql injection. Example:
+--block. We follow the original convention for substitution strings in the 
+--text provided to built-in header and footer procedures, but internally rather 
+--than directly to the anonymous block. You will be providing positional bind 
+--placeholders for EXECUTE IMMEDIATE in the PL/SQL block strings you add to 
+--page_procs. This solves a nagging problem with quoting as well as 
+--eliminating potential of sql injection. Example:
 --
 --    PdfGen.set_page_proc(
 --        q'[BEGIN 
@@ -196,11 +213,13 @@ THE SOFTWARE.
 --
 --That block (*g_page_procs(p)* below) is then executed with:
 --
---    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count, g_pagevals(i);
+--    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
+--        -- do not try to bind a non-existent collection element
+--        ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
+--    ;
 --
 --where i is the page number and g_pagevals(i) is the page specific column break
---value. (In practice we have to look for the case where g_pagevals(i) does not 
---exist.)
+--value captured while the query result set was fetched and rendered. 
 --
 --Also provided are simplified methods for generating semi-standard page header
 --and footer. You can use these procedures as a template for building your own 
@@ -210,7 +229,7 @@ THE SOFTWARE.
 --with *PdfGen*. In fact you are expected to do so with procedures such 
 --as *as_pdf3.set_font*.
 --
---Be aware that the concept of *centered* in *as_pdf3* is centered on the page.
+--Be aware that the concept of *centered* in *as_pdf3* means centered on the page.
 --*PdfGen* centers between the left and right margins. If you are using 
 --*as_pdf3.write* with align=>'center' be aware of this difference. If your left
 --and write margins are the same, it will not matter.
@@ -268,8 +287,7 @@ THE SOFTWARE.
     --
     -- Both versions allow printing with or without rectangle grids around the column values (cells).
     --
-    -- If the widths are provided via either method, the grid is centered between the margins (not
-    -- centered on the page, but between the margins).
+    -- The grid is centered between the margins (not centered on the page, but between the margins).
     --
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
@@ -295,7 +313,6 @@ THE SOFTWARE.
         ,p_grid_lines               BOOLEAN         := TRUE
     );
 
-
     --
     -- register a callback procedure or simple anonymous block to finish off pages at the end.
     -- Normally used for page headers and footers. The dynamic SQL string is called with EXECUTE IMMEDIATE
@@ -309,19 +326,21 @@ THE SOFTWARE.
     -- a custom footer:
     -- set_page_proc(
     --    q'[DECLARE
-    --        p_page_nr     NUMBER := :page_nr;
-    --        p_page_count  NUMBER := :page_count;
+    --        p_page_nr     NUMBER :=       :page_nr;
+    --        p_page_count  NUMBER :=       :page_count;
     --        -- have to bind page_val even though not using it
-    --        p_page_val    VARCHAR2(4000) := :page_val;
-    --        v_txt VARCHAR2(4000);
+    --        p_page_val    VARCHAR2(4000)  := :page_val;
+    --        v_txt         VARCHAR2(4000);
     --    BEGIN
     --        as_pdf3.set_font('helvetica','n',8);
+    --        -- left justified
     --        as_pdf3.put_txt(
     --            p_txt   => 'Report Date: '||TO_CHAR(SYSDATE,'MM/DD/YYYY')
     --            ,p_x    => PdfGen.x_left_justify
     --            ,p_y    => as_pdf3.get(as_pdf3.c_get_margin_bottom) - 8 - 5 -- fnt height plus padding
     --        );
     --        v_txt := 'Page '||LTRIM(TO_CHAR(p_page_nr))||' of '||LTRIM(TO_CHAR(p_page_count));
+    --        -- centered on same line as prior text that was left justified
     --        as_pdf3.put_text(
     --            p_txt   => v_txt
     --            ,p_x    => PdfGen.x_center(v_txt)
@@ -430,14 +449,18 @@ $end
                     -- the dynamic sql block. The block should reference the bind values 1 time positionally
                     -- with :page_nr, :page_count, :pageval (the names do not matter. position of the : placeholders does).
                     -- Remember that the callback has access to package global states but is not aware of
-                    -- the local callstack or environment of this procedure. Must use fully qualified names
-                    -- for any procedures/functions called.
+                    -- the local callstack or variables in the procedure that created and set it. Must use 
+                    -- fully qualified names for any procedures/functions called, not the short names available 
+                    -- to callers inside the same package. The anonymous block is not part of either package and only
+                    -- has access to the public interface of any package it uses (but is in the same session with the 
+                    -- same privs, same package global variables, and same transaction state). 
+                    --
                     BEGIN
 --$if $$use_applog $then
 --                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
 --$end
-                        -- do not try to bind a non-existent collection element
                         EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
+                            -- do not try to bind a non-existent collection element
                             ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END;
 
                     EXCEPTION
@@ -865,9 +888,15 @@ $end
 
             IF v_centered_left_margin < l_left_margin THEN
 $if $$use_applog $then
-                g_log.log_p('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page but maybe not.');
+                g_log.log_p('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page but maybe not. tot_width='
+                    ||TO_CHAR(l_tot_width_cols)||' margin to margin is='
+                    ||TO_CHAR((as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right)) - l_left_margin)
+                );
 $else
-                DBMS_OUTPUT.put_line('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page, but maybe not.');
+                DBMS_OUTPUT.put_line('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page but maybe not. tot_width='
+                    ||TO_CHAR(l_tot_width_cols)||' margin to margin is='
+                    ||TO_CHAR((as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right)) - l_left_margin)
+                );
 $end
                 v_centered_left_margin := l_left_margin;
             END IF;
@@ -901,9 +930,9 @@ $end
         --
         LOOP
             v_fetched_rows := DBMS_SQL.fetch_rows(p_c);
-$if $$use_applog $then
-            g_log.log_p('fetch '||TO_CHAR(v_fetched_rows)||' rows from cursor');
-$end
+--$if $$use_applog $then
+--            g_log.log_p('fetch '||TO_CHAR(v_fetched_rows)||' rows from cursor');
+--$end
             EXIT WHEN v_fetched_rows = 0;
             FOR i IN 0 .. v_fetched_rows - 1
             LOOP
@@ -923,12 +952,12 @@ $end
                         IF NOT g_pagevals.EXISTS(l_page_index) THEN
                             g_pagevals(l_page_index) := l_v;
                         ELSIF NVL(g_pagevals(l_page_index),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
-$if $$use_applog $then
-                            g_log.log_p('got column break event i='||TO_CHAR(i)
-                                ||' LastVal: '||g_pagevals(l_page_index)
-                                ||' NewVal: '||l_v
-                            );
-$end
+--$if $$use_applog $then
+--                            g_log.log_p('got column break event i='||TO_CHAR(i)
+--                                ||' LastVal: '||g_pagevals(l_page_index)
+--                                ||' NewVal: '||l_v
+--                            );
+--$end
                             as_pdf3.new_page;
                             l_page_index := as_pdf3.get(as_pdf3.c_get_page_count);
                             g_pagevals(l_page_index) := l_v;
