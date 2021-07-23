@@ -1,6 +1,6 @@
 # PdfGen.sql
 
-PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
+*PdfGen* extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
 with respect to column headers and widths, plus the ability to capture a column
 page break value for the page_procs callbacks, and go to a new page when the 
 break-column value changes.  Everything is implemented using the *as_pdf3* 
@@ -13,17 +13,14 @@ using *as_pdf3* directly.
 ## Use Case
 
 The use case for this package is to perform a small subset of sqlplus report 
-generation directly inside the database. (You can question that goal and 
-may not share it. The author would have prefered to use Unix tools on an 
-ETL server, but it was not available for the task, while a facility for 
-storing and sharing BLOB's from the database was.)
+generation directly inside the database. 
 
 Required features include page headers and footers with page break column 
-values and hidden columns.  SQL already provides the ability to produce 
-Subtotals and Totals using Grouping Sets, so that feature of sqlplus 
-reports is redundant. Rather than pulling the data out to a client sqlplus 
-session, converting to PDF, then loading it back into the database as a 
-BLOB, we do so directly in PL/SQL.
+values and hidden columns. (SQL already provides SUM Subtotals and Totals using 
+*GROUPING SETS*, so that feature of sqlplus reports is redundant.) Rather 
+than pulling the data out to a client sqlplus session on an ETL server, 
+converting to PDF, then loading it back into the database as a BLOB, we do 
+so directly in PL/SQL.
 
 We also gain page format, margins, and font control, plus optional grid 
 lines/cells for the column data values. We produce a more attractive finished 
@@ -50,12 +47,18 @@ familiar and relatively easy to convert existing reports.
                 FROM hr.employees e
                 INNER JOIN hr.departments d
                     ON d.department_id = e.department_id
-                GROUP BY GROUPING SETS(
+                GROUP BY GROUPING SETS (
+                    -- seemingly useless SUM on single record, but required to get an
+                    -- aggregate result for each detail record
                     (e.employee_id, e.last_name, e.first_name, d.department_name)
-                    ,(d.department_name) -- subtotal on dept
-                    ,() -- grand total
+                    -- SUM subtotal on dept. a standard grouping
+                    ,(d.department_name) 
+                    -- SUM grand total
+                    ,() 
                 )
             ) SELECT employee_id
+                -- NULL last_name indicates an aggregate result.
+                -- NULL department_name indicates it was the grand total
                 ,NVL(last_name, CASE WHEN department_name IS NULL
                                     THEN LPAD('GRAND TOTAL:',25)
                                     ELSE LPAD('DEPT TOTAL:',25)
@@ -63,9 +66,12 @@ familiar and relatively easy to convert existing reports.
                 ) AS last_name
                 ,first_name
                 ,department_name
-                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
+                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
             FROM a
-            ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
+            ORDER BY department_name NULLS LAST
+                -- notice based on input column value, not the output one we munged
+                ,a.last_name NULLS LAST
+                ,first_name
             ;
           RETURN l_src;
         END;
@@ -143,22 +149,23 @@ them when selected.
 ## A Few Details
 
 Column widths may be set to 0 for NOPRINT, so Break Columns where the value is 
-captured and printed in the page header via a callback, can be captured, but 
-optionally not printed with the record. Note that you can concatenate mulitple 
-column values into a string for a single non-printing break-column, and parse 
-those in your callback procedure if grouping/breaking on multiple columns
-is needed.
+captured and printed in the page header via a callback can be captured, but 
+optionally not printed with the record. Note that if grouping/breaking on 
+multiple columns is needed you can concatenate values into a string for a
+single non-printing break-column, then parse it in your callback procedure.
 
 The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 so that the page break column value can be supplied in addition to the page 
 number and page count that the original supported. One major difference is the 
-use of bind placeholders instead of direct string substitution in your pl/sql 
+use of bind placeholders instead of direct string substitution in your PL/SQL 
 block. We follow the original convention for substitution strings in the 
 text provided to built-in header and footer procedures, but internally rather 
 than directly to the anonymous block. You will be providing positional bind 
-placeholders for EXECUTE IMMEDIATE in the PL/SQL block strings you add to 
-page_procs. This solves a nagging problem with quoting as well as 
-eliminating potential of sql injection. Example:
+placeholders (:var1, :var2, ..) for EXECUTE IMMEDIATE in the PL/SQL block 
+strings you add to page_procs. This solves a nagging problem with quoting 
+as well as eliminating potential sql injection.
+
+Example:
 
     PdfGen.set_page_proc(
         q'[BEGIN 
@@ -170,15 +177,15 @@ eliminating potential of sql injection. Example:
         ]'
     );
 
-That block (*g_page_procs(p)* below) is then executed with:
+That block (*g_page_procs(p)*) is then executed with:
 
     EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
         -- do not try to bind a non-existent collection element
         ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
     ;
 
-where i is the page number and g_pagevals(i) is the page specific column break
-value captured while the query result set was fetched and rendered. 
+where *i* is the page number and *g_pagevals(i)* is the page specific column break
+value captured while the query result set was processed.
 
 Also provided are simplified methods for generating semi-standard page header
 and footer. You can use these procedures as a template for building your own 
@@ -198,7 +205,7 @@ and write margins are the same, it will not matter.
 This copy of the 2012 original release by Anton Scheffer 
 (http://technology.amis.nl and http://technology.amis.nl/?p=17718) 
 has only two small changes. I added constant *c_get_page_count* and an 
-associated addition to the public function *get()*.  If you have already 
+associated case/when to the public function *get()*.  If you have already 
 installed (and perhaps modified) your own version, you will have no trouble 
 locating these 2 changes and implementing them.
 
@@ -208,12 +215,12 @@ A general purpose database application logging facility, the core is an object
 oriented user defined type with methods for writing log records to a table.
 Since the autonomous transactions write independently, you can get status
 of the program before "succesful" completion that might be required for 
-dbms_output.  In addition to generally useful logging, it (or something like 
+dbms_output. In addition to generally useful logging, it (or something like 
 it) is indispensable for debugging and development.
 
-You do not have to deploy this UDT and tables. There is a compile directive 
+You do not have to deploy this UDT and tables.There is a compile directive 
 in *PdfGen.sql* that must be set to turn it on. If you comment out that line 
-in the deploy script (along with the call to applog.sql), PdfGen.sql will 
+in the deploy script (along with the call to applog.sql), *PdfGen.sql* will 
 compile just fine without it.
 
 # test_PdfGen.sql

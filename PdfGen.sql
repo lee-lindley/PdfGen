@@ -41,7 +41,7 @@ THE SOFTWARE.
 -- :s/^--//
 --# PdfGen.sql
 --
---PdfGen extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
+--*PdfGen* extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
 --with respect to column headers and widths, plus the ability to capture a column
 --page break value for the page_procs callbacks, and go to a new page when the 
 --break-column value changes.  Everything is implemented using the *as_pdf3* 
@@ -54,17 +54,14 @@ THE SOFTWARE.
 --## Use Case
 --
 --The use case for this package is to perform a small subset of sqlplus report 
---generation directly inside the database. (You can question that goal and 
---may not share it. The author would have prefered to use Unix tools on an 
---ETL server, but it was not available for the task, while a facility for 
---storing and sharing BLOB's from the database was.)
+--generation directly inside the database. 
 --
 --Required features include page headers and footers with page break column 
---values and hidden columns.  SQL already provides the ability to produce 
---Subtotals and Totals using Grouping Sets, so that feature of sqlplus 
---reports is redundant. Rather than pulling the data out to a client sqlplus 
---session, converting to PDF, then loading it back into the database as a 
---BLOB, we do so directly in PL/SQL.
+--values and hidden columns. (SQL already provides SUM Subtotals and Totals using 
+--*GROUPING SETS*, so that feature of sqlplus reports is redundant.) Rather 
+--than pulling the data out to a client sqlplus session on an ETL server, 
+--converting to PDF, then loading it back into the database as a BLOB, we do 
+--so directly in PL/SQL.
 --
 --We also gain page format, margins, and font control, plus optional grid 
 --lines/cells for the column data values. We produce a more attractive finished 
@@ -91,12 +88,18 @@ THE SOFTWARE.
 --                FROM hr.employees e
 --                INNER JOIN hr.departments d
 --                    ON d.department_id = e.department_id
---                GROUP BY GROUPING SETS(
+--                GROUP BY GROUPING SETS (
+--                    -- seemingly useless SUM on single record, but required to get an
+--                    -- aggregate result for each detail record
 --                    (e.employee_id, e.last_name, e.first_name, d.department_name)
---                    ,(d.department_name) -- subtotal on dept
---                    ,() -- grand total
+--                    -- SUM subtotal on dept. a standard grouping
+--                    ,(d.department_name) 
+--                    -- SUM grand total
+--                    ,() 
 --                )
 --            ) SELECT employee_id
+--                -- NULL last_name indicates an aggregate result.
+--                -- NULL department_name indicates it was the grand total
 --                ,NVL(last_name, CASE WHEN department_name IS NULL
 --                                    THEN LPAD('GRAND TOTAL:',25)
 --                                    ELSE LPAD('DEPT TOTAL:',25)
@@ -104,9 +107,12 @@ THE SOFTWARE.
 --                ) AS last_name
 --                ,first_name
 --                ,department_name
---                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave one for sign even though we will not have one
+--                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
 --            FROM a
---            ORDER BY department_name NULLS LAST, a.last_name NULLS LAST, first_name
+--            ORDER BY department_name NULLS LAST
+--                -- notice based on input column value, not the output one we munged
+--                ,a.last_name NULLS LAST
+--                ,first_name
 --            ;
 --          RETURN l_src;
 --        END;
@@ -184,22 +190,23 @@ THE SOFTWARE.
 --## A Few Details
 --
 --Column widths may be set to 0 for NOPRINT, so Break Columns where the value is 
---captured and printed in the page header via a callback, can be captured, but 
---optionally not printed with the record. Note that you can concatenate mulitple 
---column values into a string for a single non-printing break-column, and parse 
---those in your callback procedure if grouping/breaking on multiple columns
---is needed.
+--captured and printed in the page header via a callback can be captured, but 
+--optionally not printed with the record. Note that if grouping/breaking on 
+--multiple columns is needed you can concatenate values into a string for a
+--single non-printing break-column, then parse it in your callback procedure.
 --
 --The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 --so that the page break column value can be supplied in addition to the page 
 --number and page count that the original supported. One major difference is the 
---use of bind placeholders instead of direct string substitution in your pl/sql 
+--use of bind placeholders instead of direct string substitution in your PL/SQL 
 --block. We follow the original convention for substitution strings in the 
 --text provided to built-in header and footer procedures, but internally rather 
 --than directly to the anonymous block. You will be providing positional bind 
---placeholders for EXECUTE IMMEDIATE in the PL/SQL block strings you add to 
---page_procs. This solves a nagging problem with quoting as well as 
---eliminating potential of sql injection. Example:
+--placeholders (:var1, :var2, ..) for EXECUTE IMMEDIATE in the PL/SQL block 
+--strings you add to page_procs. This solves a nagging problem with quoting 
+--as well as eliminating potential sql injection.
+--
+--Example:
 --
 --    PdfGen.set_page_proc(
 --        q'[BEGIN 
@@ -211,15 +218,15 @@ THE SOFTWARE.
 --        ]'
 --    );
 --
---That block (*g_page_procs(p)* below) is then executed with:
+--That block (*g_page_procs(p)*) is then executed with:
 --
 --    EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
 --        -- do not try to bind a non-existent collection element
 --        ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
 --    ;
 --
---where i is the page number and g_pagevals(i) is the page specific column break
---value captured while the query result set was fetched and rendered. 
+--where *i* is the page number and *g_pagevals(i)* is the page specific column break
+--value captured while the query result set was processed.
 --
 --Also provided are simplified methods for generating semi-standard page header
 --and footer. You can use these procedures as a template for building your own 
@@ -233,19 +240,17 @@ THE SOFTWARE.
 --*PdfGen* centers between the left and right margins. If you are using 
 --*as_pdf3.write* with align=>'center' be aware of this difference. If your left
 --and write margins are the same, it will not matter.
---
 
     --
     -- not sure why plain table collections were used in as_pdf3. I have some guesses, but 
-    -- it does not matter. I like this style better and, though it is not relevant,
-    -- was a little shocked to find out it can be slightly faster than plain table collections.
+    -- it does not matter. 
     --
     TYPE t_col_widths IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
     TYPE t_col_headers IS TABLE OF VARCHAR2(4000) INDEX BY BINARY_INTEGER;
 
     -- you can put page specific values here for !PAGE_VAL# yourself, though it is 
-    -- not the intended design which is for column breaks.  The values are not
-    -- used until we "finish" the report which is during get_pdf or save_pdf.
+    -- not the intended design (which is for column breaks).  The values are not
+    -- used until we "finish" the report which is during get_pdf() or save_pdf().
     -- Any point up to those calls you can muck with this table if you so desire.
     --
     -- index is by page number 1..x, while as_pdf3 uses 0..x-1 for indexes to the pages
@@ -255,7 +260,7 @@ THE SOFTWARE.
     -- must call this init which also calls as_pdf3.init
     PROCEDURE init;
 
-    -- use these instead of as_pdf3 versions (which are called by these).
+    -- mandator to use these instead of as_pdf3 versions (which are called by these).
     FUNCTION get_pdf RETURN BLOB;
     PROCEDURE save_pdf(
         p_dir       VARCHAR2
@@ -277,9 +282,9 @@ THE SOFTWARE.
     );
 
     -- two styles of report grid. The first either equal distances the columns across the printable area
-    -- or if true, uses your query column names to determine the width of each column. Pad your names
-    -- with spaces (i.e. colval AS "Column Header 1    ") to set the widths. This can be a convenient
-    -- shortcut for simple results.
+    -- or if p_col_headers is true, uses your query column names to determine the width of each column. 
+    -- Pad your names with spaces (i.e. colval AS "Column Header 1    ") to set the widths. This can be 
+    -- a convenient shortcut for simple results.
     --
     -- Note that there are limitations to this and I would not try to use query column headers longer
     -- than 30 characters (though I suspect up to 128 MIGHT work). At some point it is just unweildly
@@ -308,7 +313,7 @@ THE SOFTWARE.
         ,p_headers                  t_col_headers  
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
-        -- index to column to perform a page break upon value change
+        -- index to column to perform a newpage call upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
     );
@@ -316,7 +321,7 @@ THE SOFTWARE.
     --
     -- register a callback procedure or simple anonymous block to finish off pages at the end.
     -- Normally used for page headers and footers. The dynamic SQL string is called with EXECUTE IMMEDIATE
-    -- and is passed 3 bind values with the USING clause that you must consume whether you use them or not.
+    -- and is passed 3 bind values with the USING clause that you must consume whether you want them or not.
     --
     PROCEDURE set_page_proc(p_sql_block CLOB);
     -- Examples:
@@ -330,6 +335,8 @@ THE SOFTWARE.
     --        p_page_count  NUMBER :=       :page_count;
     --        -- have to bind page_val even though not using it
     --        p_page_val    VARCHAR2(4000)  := :page_val;
+    --        -- we print below the margin by height of font and padding of 5 points
+    --        v_y           NUMBER := as_pdf3.get(as_pdf3.c_get_margin_bottom) - 8 - 5;
     --        v_txt         VARCHAR2(4000);
     --    BEGIN
     --        as_pdf3.set_font('helvetica','n',8);
@@ -337,14 +344,14 @@ THE SOFTWARE.
     --        as_pdf3.put_txt(
     --            p_txt   => 'Report Date: '||TO_CHAR(SYSDATE,'MM/DD/YYYY')
     --            ,p_x    => PdfGen.x_left_justify
-    --            ,p_y    => as_pdf3.get(as_pdf3.c_get_margin_bottom) - 8 - 5 -- fnt height plus padding
+    --            ,p_y    => v_y
     --        );
     --        v_txt := 'Page '||LTRIM(TO_CHAR(p_page_nr))||' of '||LTRIM(TO_CHAR(p_page_count));
     --        -- centered on same line as prior text that was left justified
     --        as_pdf3.put_text(
     --            p_txt   => v_txt
     --            ,p_x    => PdfGen.x_center(v_txt)
-    --            ,p_y    => as_pdf3.get(as_pdf3.c_get_margin_bottom) - 8 - 5 
+    --            ,p_y    => v_y
     --        );
     --    END;]'
     --);
@@ -386,7 +393,7 @@ THE SOFTWARE.
     --
     -- convenience functions for calculating where to start writing for as_pdf3.put_txt.
     --
-    -- returns current left margin
+    -- returns left margin
     FUNCTION x_left_justify RETURN NUMBER;
     -- returns x_value at which to start this string with this font to right justify it
     FUNCTION x_right_justify(p_txt VARCHAR2) RETURN NUMBER;
@@ -400,12 +407,12 @@ END PdfGen;
 show errors
 CREATE OR REPLACE PACKAGE BODY PdfGen
 AS
-    -- pl/sql blocs given to execute immediate on every page at the very end
+    -- pl/sql blocs given to execute immediate on every page at the very end.
     -- assigned via set_page_proc
     TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
     g_page_procs    t_page_procs;
 
-    -- used internally for apply_footer/apply_header
+    -- used internally for apply_footer/apply_header callbacks
     g_footer_txt            VARCHAR2(32767);
     g_footer_font_family    VARCHAR2(100);
     g_footer_style          VARCHAR2(2);
@@ -427,6 +434,8 @@ $end
     PROCEDURE apply_page_procs
     IS
     --
+    -- Apply any provided PdfGen callbacks to every page
+    --
     -- get_pdf and save_pdf still call the as_pdf3 versions of get_pdf and save_pdf,
     -- which call as_pdf3.finish_pdf that applies the as_pdf3 page procs. I do not know why
     -- you would use those as oppsed to PdfGen page procs, but you can.
@@ -441,9 +450,10 @@ $end
             v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
             FOR i IN 1..v_page_count
             LOOP
-                as_pdf3.pr_goto_page(i); -- sets g_page_nr
+                as_pdf3.pr_goto_page(i); -- sets as_pdf3.g_page_nr
                 FOR p IN g_page_procs.FIRST .. g_page_procs.LAST
                 LOOP
+                    --
                     -- execute the callbacks on every page. Provide argument of page number, number of pages
                     -- and a page specific value (set by break column in cursor2table) as positional bind values to 
                     -- the dynamic sql block. The block should reference the bind values 1 time positionally
@@ -452,8 +462,8 @@ $end
                     -- the local callstack or variables in the procedure that created and set it. Must use 
                     -- fully qualified names for any procedures/functions called, not the short names available 
                     -- to callers inside the same package. The anonymous block is not part of either package and only
-                    -- has access to the public interface of any package it uses (but is in the same session with the 
-                    -- same privs, same package global variables, and same transaction state). 
+                    -- has access to the public interface of any package it uses (but operates in the same session 
+                    -- with the same privs, same package global variable values, and same transaction state). 
                     --
                     BEGIN
 --$if $$use_applog $then
@@ -599,6 +609,7 @@ $end
     PROCEDURE set_page_proc(p_sql_block CLOB)
     IS
     BEGIN
+        -- will start at index 0
         g_page_procs(g_page_procs.COUNT) := p_sql_block;
     END set_page_proc;
 
@@ -675,6 +686,7 @@ $if $$use_applog $then
             g_log.log_p('v_start_x: '||TO_CHAR(v_start_x)||' v_left_margin: '||TO_CHAR(v_left_margin));
 $else
             DBMS_OUTPUT.put_line('x_center: text length exceeds width between margins so starting at left margin. p_txt='||p_txt);
+            DBMS_OUTPUT.put_line('v_start_x: '||TO_CHAR(v_start_x)||' v_left_margin: '||TO_CHAR(v_left_margin));
 $end
             v_start_x := v_left_margin;
         END IF;
@@ -685,8 +697,7 @@ $end
     RETURN NUMBER
     IS
     BEGIN
-        RETURN as_pdf3.get(as_pdf3.c_get_page_height) 
-                  - as_pdf3.get(as_pdf3.c_get_margin_top)
+        RETURN as_pdf3.get(as_pdf3.c_get_page_height) - as_pdf3.get(as_pdf3.c_get_margin_top)
         ;
     END y_top_margin;
 
@@ -835,7 +846,7 @@ $end
         END IF;
 
         -- 3 cases of provided widths
-        If p_widths IS NULL OR p_widths.COUNT < v_col_cnt THEN
+        If p_widths IS NULL OR p_widths.COUNT <> v_col_cnt THEN
             -- 1) widths not provided or not correctly. Split the start positions across the printable area.
             DECLARE
                 l_col_width NUMBER := ROUND((as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_left) - as_pdf3.get(as_pdf3.c_get_margin_right)) / v_col_cnt, 1);
@@ -918,9 +929,12 @@ $end
        END LOOP;
 --
         v_lineheight := as_pdf3.get(as_pdf3.c_get_fontsize) * (1 + c_rf);
-        v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) - v_lineheight
-                        ,y_top_margin
-                       ) - v_lineheight; 
+        IF as_pdf3.get(as_pdf3.c_get_page_count) = 0 THEN
+            as_pdf3.new_page;
+            v_y := y_top_margin - v_lineheight; 
+        ELSE
+            v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) ,y_top_margin) - v_lineheight; 
+        END IF;
 --
         show_header;
 --
@@ -946,9 +960,6 @@ $end
                         l_v             VARCHAR2(32767) := get_col_val(p_break_col, i);
                         l_page_index    BINARY_INTEGER  := as_pdf3.get(as_pdf3.c_get_page_count);
                     BEGIN
-                        IF l_page_index < 1 THEN
-                            l_page_index := 1;
-                        END IF;
                         IF NOT g_pagevals.EXISTS(l_page_index) THEN
                             g_pagevals(l_page_index) := l_v;
                         ELSIF NVL(g_pagevals(l_page_index),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
@@ -969,7 +980,7 @@ $end
                 v_x := v_centered_left_margin; --as_pdf3.get(as_pdf3.c_get_margin_left);
                 FOR c IN 1 .. v_col_cnt
                 LOOP
-                    CONTINUE WHEN v_col_widths(c) = 0;
+                    CONTINUE WHEN v_col_widths(c) = 0; -- skip hidden columns
                     IF p_grid_lines THEN
                         as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight);
                     END IF;
