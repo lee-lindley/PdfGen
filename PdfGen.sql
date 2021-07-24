@@ -84,22 +84,22 @@ THE SOFTWARE.
 --          OPEN l_src FOR
 --            WITH a AS (
 --                SELECT e.employee_id, e.last_name, e.first_name, d.department_name
---                    ,SUM(salary) AS salary
+--                    ,SUM(salary) AS salary          -- emulate sqplus COMPUTE SUM
 --                FROM hr.employees e
 --                INNER JOIN hr.departments d
 --                    ON d.department_id = e.department_id
 --                GROUP BY GROUPING SETS (
---                    -- seemingly useless SUM on single record, but required to get an
---                    -- aggregate result for each detail record
+--                                                    -- seemingly useless SUM on single record, 
+--                                                    -- but required to get detail records
+--                                                    -- in same query as the subtotal and total aggregates
 --                    (e.employee_id, e.last_name, e.first_name, d.department_name)
---                    -- SUM subtotal on dept. a standard grouping
---                    ,(d.department_name) 
---                    -- SUM grand total
---                    ,() 
+--                    ,(d.department_name)            -- sqlplus COMPUTE SUM of salary ON department_name
+--                    ,()                             -- sqlplus COMPUTE SUM of salary ON report - the grand total
 --                )
 --            ) SELECT employee_id
 --                -- NULL last_name indicates an aggregate result.
 --                -- NULL department_name indicates it was the grand total
+--                -- Similar to the LABEL on COMPUTE SUM
 --                ,NVL(last_name, CASE WHEN department_name IS NULL
 --                                    THEN LPAD('GRAND TOTAL:',25)
 --                                    ELSE LPAD('DEPT TOTAL:',25)
@@ -109,25 +109,24 @@ THE SOFTWARE.
 --                ,department_name
 --                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
 --            FROM a
---            ORDER BY department_name NULLS LAST
---                -- notice based on input column value, not the output one we munged
---                ,a.last_name NULLS LAST
+--            ORDER BY department_name NULLS LAST     -- to get the aggregates after detail
+--                ,a.last_name NULLS LAST             -- notice based on FROM column value, not the one we munged in resultset
 --                ,first_name
 --            ;
 --          RETURN l_src;
 --        END;
 --    BEGIN
---        v_src := get_src;
---        --
+--                                                    -- Similar to the sqlplus COLUMN HEADING commands
 --        v_headers(1) := 'Employee ID';
 --        v_widths(1)  := 11;
 --        v_headers(2) := 'Last Name';
 --        v_widths(2)  := 25;
 --        v_headers(3) := 'First Name';
 --        v_widths(3)  := 20;
---        -- will not print this column, just capture it for column page break
---        v_headers(4) := 'department_name';
---        v_widths(4)  := 0;
+--                                                    -- will not print this column, 
+--                                                    -- just capture it for column page break
+--        v_headers(4) := NULL;                       --'Department Name'
+--        v_widths(4)  := 0;                          -- sqlplus COLUMN NOPRINT 
 --        v_headers(5) := 'Salary';
 --        v_widths(5)  := 16;
 --        --
@@ -140,39 +139,44 @@ THE SOFTWARE.
 --            ,p_left_margin      => 0.75
 --            ,p_right_margin     => 0.75
 --        );
---        PdfGen.set_footer; -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
+--        PdfGen.set_footer;                          -- 'Page #PAGE_NR# of "PAGE_COUNT#' is the default
+--                                                    -- sqlplus TITLE command
 --        PdfGen.set_header(
---            p_txt           => 'Employee Salary Report'
---            ,p_font_family  => 'helvetica'
---            ,p_style        => 'b'
---            ,p_fontsize_pt  => 16
---            ,p_centered     => TRUE
---            ,p_txt_2        => 'Department: !PAGE_VAL#'
---            ,p_fontsize_pt_2 => 12
---            ,p_centered_2   => FALSE -- left align
+--            p_txt               => 'Employee Salary Report'
+--            ,p_font_family      => 'helvetica'
+--            ,p_style            => 'b'
+--            ,p_fontsize_pt      => 16
+--            ,p_centered         => TRUE
+--            ,p_txt_2            => 'Department: !PAGE_VAL#'
+--            ,p_fontsize_pt_2    => 12
+--            ,p_centered_2       => FALSE            -- left align
 --        );
 --        --
 --        as_pdf3.set_font('courier', 'n', 10);
+--        v_src := get_src;                           -- open the query cursor
 --        PdfGen.refcursor2table(
---            p_src => v_src
---            ,p_widths => v_widths, p_headers => v_headers
---            ,p_bold_headers => TRUE, p_char_widths_conversion => TRUE
---            ,p_break_col => 4
---            ,p_grid_lines => FALSE
+--            p_src                       => v_src
+--            ,p_widths                   => v_widths
+--            ,p_headers                  => v_headers
+--            ,p_bold_headers             => TRUE     -- also light gray background on headers
+--            ,p_char_widths_conversion   => TRUE
+--            ,p_break_col                => 4        -- sqlplus BREAK ON column
+--            ,p_grid_lines               => FALSE
 --        );
 --        v_blob := PdfGen.get_pdf;
 --        BEGIN
---            CLOSE v_src;
+--            CLOSE v_src;                            -- likely redundant, but paranoid is good
 --        EXCEPTION WHEN invalid_cursor THEN NULL;
 --        END;
---        RETURN v_blob;
+--        -- can insert into a table or add to a zip archive blob or attach to an email
+--        RETURN v_blob;                              
 --    END test0;
 --
 --## Retrieve Blob and View
 --
 --With SqlDeveloper or Toad 
 --
--->SELECT test0 FROM dual;
+--    SELECT test0 FROM dual;
 --
 --Double click on the BLOB value in the results grid. In SqlDeveloper you get a 
 --pencil icon. Click on that and choose *download* (toad is similar). Save the 
@@ -202,7 +206,7 @@ THE SOFTWARE.
 --block. We follow the original convention for substitution strings in the 
 --text provided to built-in header and footer procedures, but internally rather 
 --than directly to the anonymous block. You will be providing positional bind 
---placeholders (:var1, :var2, ..) for EXECUTE IMMEDIATE in the PL/SQL block 
+--placeholders (:var1, :var2, :var3) for EXECUTE IMMEDIATE in the PL/SQL block 
 --strings you add to page_procs. This solves a nagging problem with quoting 
 --as well as eliminating potential sql injection.
 --
@@ -402,6 +406,9 @@ THE SOFTWARE.
     -- returns y_value of the top margin. Add to this value to print a header line above the margin
     FUNCTION y_top_margin RETURN NUMBER;
 
+    -- Y value of the last line written by cursor2table
+    FUNCTION get_y RETURN NUMBER;
+
 END PdfGen;
 /
 show errors
@@ -426,6 +433,8 @@ AS
     g_header_txt_2          VARCHAR2(32767);
     g_header_fontsize_pt_2  NUMBER;
     g_header_centered_2     BOOLEAN;
+
+    g_y                     NUMBER; -- the y value of the last grid line printed;
 
 $if $$use_applog $then
     g_log                   applog_udt;
@@ -701,6 +710,13 @@ $end
         ;
     END y_top_margin;
 
+    FUNCTION get_y 
+    RETURN NUMBER
+    IS
+    BEGIN
+        RETURN g_y;
+    END get_y;
+
     PROCEDURE set_page_format(
         p_format            VARCHAR2 := 'LETTER' --'LEGAL', 'A4', etc... See as_pdf3
         ,p_orientation      VARCHAR2 := 'PORTRAIT' -- or 'LANDSCAPE'
@@ -714,6 +730,7 @@ $end
         as_pdf3.set_page_format(p_format);
         as_pdf3.set_page_orientation(p_orientation);
         as_pdf3.set_margins(p_top_margin, p_left_margin, p_bottom_margin, p_right_margin, 'inch');
+        g_y := y_top_margin;
     END set_page_format
     ;
 
@@ -743,6 +760,7 @@ $END
 
         v_bulk_cnt          BINARY_INTEGER := 100;
         v_fetched_rows      BINARY_INTEGER;
+        v_page_count        BINARY_INTEGER := as_pdf3.get(as_pdf3.c_get_page_count);
         v_col_widths        t_col_widths;
         -- new left marging for starting each line after calculating how to center the grid between the margins
         v_centered_left_margin  NUMBER;
@@ -845,7 +863,7 @@ $else
 $end
         END IF;
 
-        -- 3 cases of provided widths
+        -- 3 cases of widths
         If p_widths IS NULL OR p_widths.COUNT <> v_col_cnt THEN
             -- 1) widths not provided or not correctly. Split the start positions across the printable area.
             DECLARE
@@ -927,17 +945,18 @@ $end
                     NULL;
             END CASE;
        END LOOP;
---
+
         v_lineheight := as_pdf3.get(as_pdf3.c_get_fontsize) * (1 + c_rf);
-        IF as_pdf3.get(as_pdf3.c_get_page_count) = 0 THEN
+        v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) ,y_top_margin) - v_lineheight; 
+
+        IF v_page_count = 0 OR v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) 
+        THEN -- either nothing done yet or already wrote a full page and need to start a new one
             as_pdf3.new_page;
+            v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
             v_y := y_top_margin - v_lineheight; 
-        ELSE
-            v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) ,y_top_margin) - v_lineheight; 
         END IF;
---
+
         show_header;
---
         --
         -- Now that all the prep is done, lets get this party started writing out
         -- the records from the cursor
@@ -952,32 +971,32 @@ $end
             LOOP
                 IF v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) THEN
                     as_pdf3.new_page;
+                    v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
                     v_y := y_top_margin - v_lineheight; 
                     show_header;
                 END IF;
                 IF p_break_col IS NOT NULL THEN
                     DECLARE
                         l_v             VARCHAR2(32767) := get_col_val(p_break_col, i);
-                        l_page_index    BINARY_INTEGER  := as_pdf3.get(as_pdf3.c_get_page_count);
                     BEGIN
-                        IF NOT g_pagevals.EXISTS(l_page_index) THEN
-                            g_pagevals(l_page_index) := l_v;
-                        ELSIF NVL(g_pagevals(l_page_index),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
+                        IF NOT g_pagevals.EXISTS(v_page_count) THEN
+                            g_pagevals(v_page_count) := l_v;
+                        ELSIF NVL(g_pagevals(v_page_count),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
 --$if $$use_applog $then
 --                            g_log.log_p('got column break event i='||TO_CHAR(i)
---                                ||' LastVal: '||g_pagevals(l_page_index)
+--                                ||' LastVal: '||g_pagevals(v_page_count)
 --                                ||' NewVal: '||l_v
 --                            );
 --$end
                             as_pdf3.new_page;
-                            l_page_index := as_pdf3.get(as_pdf3.c_get_page_count);
-                            g_pagevals(l_page_index) := l_v;
+                            v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
+                            g_pagevals(v_page_count) := l_v;
                             v_y := y_top_margin - v_lineheight; 
                             show_header;
                         END IF;
                     END;
                 END IF;
-                v_x := v_centered_left_margin; --as_pdf3.get(as_pdf3.c_get_margin_left);
+                v_x := v_centered_left_margin; 
                 FOR c IN 1 .. v_col_cnt
                 LOOP
                     CONTINUE WHEN v_col_widths(c) = 0; -- skip hidden columns
@@ -997,16 +1016,18 @@ $end
                         END IF;
                     END IF;
                     v_x := v_x + v_col_widths(c); 
-                END LOOP; -- over columns
-                v_y := v_y - v_lineheight;
-            END LOOP; -- over array of rows fetched
+                END LOOP;                       -- over columns
+                v_y := v_y - v_lineheight;      -- advance to the next line
+            END LOOP;                           -- over array of rows fetched
             EXIT WHEN v_fetched_rows != v_bulk_cnt;
-        END LOOP; -- main fetch loop      
-        --g_y := v_y; --we cannot set g_y, but we are not writing anything else at this location
-        -- as_pdf3 allowed for writing new text immediately after the grid.
+        END LOOP;                               -- main fetch loop      
+        g_y := v_y; --we cannot set g_y in as_pdf3.
+        -- as_pdf3 allowed for writing new text immediately after the grid without specifying x/y.
         -- To do this we would need a new public funtion as_pdf3.set_global_y.
-        -- If you want to write after the grid, better to call as_pdf3.new_page
-        -- first because you will not know the Y value that ended the grid printing
+        -- If you want to write after the grid, you must specify the x and y values with the
+        -- first write or put_text. Use PdfGen.get_y to retrieve it, add your lineheight to it 
+        -- and specify it in the write or put_text
+        --
     END cursor2table;
 
     PROCEDURE refcursor2table(
