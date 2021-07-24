@@ -193,7 +193,9 @@ That block (*g_page_procs(p)*) is then executed with:
     ;
 
 where *i* is the page number and *g_pagevals(i)* is the page specific column break
-value captured while the query result set was processed.
+value captured while the query result set was processed. See *PdfGen* package
+header for an example of a comprehensive anonymous block that does not require
+you to provide a public procedure.
 
 Also provided are simplified methods for generating semi-standard page header
 and footer. You can use these procedures as a template for building your own 
@@ -226,14 +228,15 @@ you can get status of the program before "succesful" completion that might be
 required for dbms_output. In addition to generally useful logging, 
 it (or something like it) is indispensable for debugging and development.
 
-You do not have to deploy this UDT and tables. There is a compile directive 
-in *PdfGen.sql* that must be set to turn it on. If you comment out the line 
-in the deploy script that sets PLSQL_CCFLAGS (along with the call to run
-applog.sql), *PdfGen.sql* will compile just fine without it.
+You do not have to deploy this User Defined Type and tables. There is a 
+compile directive in *PdfGen.sql* that must be set to turn it on. If you
+comment out the line in the deploy script that sets PLSQL_CCFLAGS
+(along with the call to run applog.sql), *PdfGen.sql* will compile just 
+fine without it.
 
 # test_PdfGen.sql
 
-A package that represents my test cases as well as examples of how to use it.
+A package containing my test cases as well as examples of how to use *PdfGen*.
 There is no reason for you to deploy it except for study. Install it in your
 development environment for reference. You can always drop it later.
 
