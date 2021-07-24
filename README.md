@@ -177,9 +177,10 @@ Example:
     PdfGen.set_page_proc(
         q'[BEGIN 
             yourpkgname.apply_footer(
-                p_page_nr => :page_nr
-                ,p_page_count => :page_count
-                ,p_page_val => :page_val); 
+                p_page_nr       => :page_nr
+                ,p_page_count   => :page_count
+                ,p_page_val     => :page_val
+            ); 
             END;
         ]'
     );
@@ -218,17 +219,17 @@ locating these 2 changes and implementing them.
 
 # applog.sql
 
-A general purpose database application logging facility, the core is an object 
-oriented user defined type with methods for writing log records to a table.
-Since the autonomous transactions write independently, you can get status
-of the program before "succesful" completion that might be required for 
-dbms_output. In addition to generally useful logging, it (or something like 
-it) is indispensable for debugging and development.
+A lightweight and fast general purpose database application logging facility, 
+the core is an object oriented user defined type with methods for writing 
+log records to a table.  Since the autonomous transactions write independently,
+you can get status of the program before "succesful" completion that might be
+required for dbms_output. In addition to generally useful logging, 
+it (or something like it) is indispensable for debugging and development.
 
-You do not have to deploy this UDT and tables.There is a compile directive 
-in *PdfGen.sql* that must be set to turn it on. If you comment out that line 
-in the deploy script (along with the call to applog.sql), *PdfGen.sql* will 
-compile just fine without it.
+You do not have to deploy this UDT and tables. There is a compile directive 
+in *PdfGen.sql* that must be set to turn it on. If you comment out the line 
+in the deploy script that sets PLSQL_CCFLAGS (along with the call to run
+applog.sql), *PdfGen.sql* will compile just fine without it.
 
 # test_PdfGen.sql
 
