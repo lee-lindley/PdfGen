@@ -259,7 +259,7 @@ BEGIN
                          THEN 'APPLOG_2' 
                          ELSE 'APPLOG_1'
                     END;
-    EXECUTE IMMEDIATE 'TRUNCATE TABLE '||v_dest_table;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE '||v_dest_table||' DROP ALL STORAGE';
     v_log_obj.log_p('truncated table '||v_dest_table);
     --
     -- Here is the magic. We swap the synonym. That means any

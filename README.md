@@ -181,7 +181,7 @@ Example:
                 ,p_page_count   => :page_count
                 ,p_page_val     => :page_val
             ); 
-            END;
+           END;
         ]'
     );
 
@@ -213,7 +213,10 @@ and write margins are the same, it will not matter.
 # as_pdf3_4.sql
 
 This copy of the 2012 original release by Anton Scheffer 
-(http://technology.amis.nl and http://technology.amis.nl/?p=17718) 
+
+- https://technology.amis.nl/?p=17718
+- https://technology.amis.nl/wp-content/uploads/2012/04/as_pdf3_4.txt
+
 has only two small changes. I added constant *c_get_page_count* and an 
 associated case/when to the public function *get()*.  If you have already 
 installed (and perhaps modified) your own version, you will have no trouble 
