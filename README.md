@@ -150,7 +150,7 @@ blob to a file named test0.pdf. Open in a pdf viewer.
 
  ![test0_pgx](/images/test0_pgx.png)
 
-Pdf files from test_PdfGen are in the *samples* folder. Github will display 
+Pdf files from *test/test_PdfGen* are in the *samples* folder. Github will display 
 them when selected.
 
 ## A Few Details
@@ -237,7 +237,7 @@ comment out the line in the deploy script that sets PLSQL_CCFLAGS
 (along with the call to run applog.sql), *PdfGen.sql* will compile just 
 fine without it.
 
-# test_PdfGen.sql
+# test/test_PdfGen.sql
 
 A package containing my test cases as well as examples of how to use *PdfGen*.
 There is no reason for you to deploy it except for study. Install it in your
@@ -245,8 +245,9 @@ development environment for reference. You can always drop it later.
 
 Note: If your schema does not have SELECT priv directly (role doesn't count)
 on the database sample *HR* schema tables *employees* and *departments*, 
-then *test0* is not included. In the *test* folder is a script to add those 
-grants (though it is simple enough to just do so manually).
+then *test0* is not included. Assuming *HR* is installed, in the *test* 
+folder is a script to add those grants (though it is simple enough to just 
+do so manually).
 
 # deploy.sql
 
