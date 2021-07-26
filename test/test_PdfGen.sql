@@ -390,9 +390,31 @@ END test2
         v_widths(3)  := 0;
         --
         PdfGen.init;
-        PdfGen.set_page_format('LEGAL','LANDSCAPE');
-        PdfGen.set_footer('Page #PAGE_NR# of "PAGE_COUNT#');
-        PdfGen.set_header('Data Dictionary Views for group !PAGE_VAL#');
+        PdfGen.set_page_format(
+            p_format        => 'LEGAL'
+            ,p_orientation  => 'LANDSCAPE'
+            ,p_top_margin   => 1.25
+            ,p_bottom_margin    => 0.6
+        );
+        PdfGen.set_complex_footer(
+            p_txt_center    => 'Page #PAGE_NR# of "PAGE_COUNT#'
+            ,p_txt_left     => 'Report Date: '||TO_CHAR(SYSDATE,'MM/DD/YYYY')
+            ,p_txt_right    => 'Copyright notice???'
+        );
+        PdfGen.set_complex_header(
+             p_txt_center   => 'Data Dictionary Views'
+            ,p_txt_left     => 'Left text line 1'
+            ,p_txt_right    => 'Right text line 1'
+            ,p_txt_left_2   => 'Group: !PAGE_VAL#'
+            ,p_txt_center_2 => 'Center text line 2'
+            ,p_txt_right_2  => 'Right text line 2'
+            ,p_fontsize_pt_3 => 10
+            ,p_font_family_3 => 'courier'
+            ,p_style_3      => 'i'
+            ,p_txt_left_3   => 'Left text line 3'
+            ,p_txt_right_3  => 'Right text line 3'
+            ,p_txt_center_3 => 'Center text line 3'
+        );
         --
         -- just so we can see the margins. Not a general practice
         as_pdf3.rect(as_pdf3.get(as_pdf3.c_get_margin_left), as_pdf3.get(as_pdf3.c_get_margin_bottom)

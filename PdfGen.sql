@@ -368,13 +368,21 @@ THE SOFTWARE.
         ,p_fontsize_pt  NUMBER      := 8
         ,p_centered     BOOLEAN     := TRUE -- false give left align
     );
+    PROCEDURE set_complex_footer(
+         p_txt_center   VARCHAR2    := NULL
+        ,p_txt_left     VARCHAR2    := NULL
+        ,p_txt_right    VARCHAR2    := NULL
+        ,p_font_family  VARCHAR2    := 'helvetica'
+        ,p_style        VARCHAR2    := 'n'
+        ,p_fontsize_pt  NUMBER      := 8
+    );
     -- callback proc. Not part of user interface
     PROCEDURE apply_footer(
         p_page_nr       NUMBER
         ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
-    -- simple 1 line header slightly into the top margin with page specific substitutions
+    -- simple header slightly into the top margin with page specific substitutions
     -- Optionally can be two lines such as might be useful with column-break values on the
     -- second line.
     PROCEDURE set_header(
@@ -387,6 +395,28 @@ THE SOFTWARE.
         ,p_fontsize_pt_2    NUMBER      := 14
         ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     );
+    PROCEDURE set_complex_header(
+         p_txt_center       VARCHAR2    := NULL
+        ,p_txt_left         VARCHAR2    := NULL
+        ,p_txt_right        VARCHAR2    := NULL
+        ,p_fontsize_pt      NUMBER      := 18
+        ,p_font_family      VARCHAR2    := 'helvetica'
+        ,p_style            VARCHAR2    := 'b'
+        ,p_txt_center_2     VARCHAR2    := NULL
+        ,p_txt_left_2       VARCHAR2    := NULL
+        ,p_txt_right_2      VARCHAR2    := NULL
+        ,p_fontsize_pt_2    NUMBER      := 14
+        ,p_font_family_2    VARCHAR2    := 'helvetica'
+        ,p_style_2          VARCHAR2    := 'b'
+        ,p_txt_center_3     VARCHAR2    := NULL
+        ,p_txt_left_3       VARCHAR2    := NULL
+        ,p_txt_right_3      VARCHAR2    := NULL
+        ,p_fontsize_pt_3    NUMBER      := 14
+        ,p_font_family_3    VARCHAR2    := 'helvetica'
+        ,p_style_3          VARCHAR2    := 'b'
+    );
+
+
     -- callback proc. Not part of user interface
     PROCEDURE apply_header (
         p_page_nr       NUMBER
@@ -419,20 +449,9 @@ AS
     TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
     g_page_procs    t_page_procs;
 
-    -- used internally for apply_footer/apply_header callbacks
-    g_footer_txt            VARCHAR2(32767);
-    g_footer_font_family    VARCHAR2(100);
-    g_footer_style          VARCHAR2(2);
-    g_footer_fontsize_pt    NUMBER;
-    g_footer_centered       BOOLEAN;
-    g_header_txt            VARCHAR2(32767);
-    g_header_font_family    VARCHAR2(100);
-    g_header_style          VARCHAR2(2);
-    g_header_fontsize_pt    NUMBER;
-    g_header_centered       BOOLEAN;
-    g_header_txt_2          VARCHAR2(32767);
-    g_header_fontsize_pt_2  NUMBER;
-    g_header_centered_2     BOOLEAN;
+    TYPE t_ctx IS TABLE OF VARCHAR2(32767) INDEX BY VARCHAR2(64);
+    g_footer    t_ctx;
+    g_header    t_ctx;
 
     g_y                     NUMBER; -- the y value of the last grid line printed;
 
@@ -512,26 +531,64 @@ $end
         ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     ) IS
-        v_txt           VARCHAR2(32767);
-        c_padding       CONSTANT NUMBER := 5; --space beteen footer line and margin
+        v_txt               VARCHAR2(32767);
+        c_padding           CONSTANT NUMBER := 5; --space beteen footer line and margin
+        v_which             VARCHAR2(64);
     BEGIN
-        -- we use the original text substitution strings, but in a text variable, 
-        -- not a pl/sql block.
-        v_txt := REPLACE(
-                    REPLACE(
-                        REPLACE(g_footer_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
-                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
-                    ,'!PAGE_VAL#', p_page_val
+        as_pdf3.set_font(g_footer('font_family'), g_footer('style'), TO_NUMBER(g_footer('fontsize_pt')));
+        FOR i IN 1..3
+        LOOP
+            v_which := CASE i WHEN 1 THEN 'txt_left' WHEN 2 THEN 'txt_center' WHEN 3 THEN 'txt_right' END;
+            IF g_footer.EXISTS(v_which) THEN
+                -- we use the original text substitution strings, but in a text variable, 
+                -- not a pl/sql block.
+                v_txt := REPLACE(
+                            REPLACE(
+                                REPLACE(g_footer(v_which), '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                                ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count))
+                            )
+                            ,'!PAGE_VAL#', p_page_val
+                        );
+                as_pdf3.put_txt(
+                     p_txt => v_txt
+                    ,p_x    => CASE i
+                                WHEN 1 THEN x_left_justify
+                                WHEN 2 THEN x_center(v_txt)
+                                WHEN 3 THEN x_right_justify(v_txt)
+                               END
+                    ,p_y    => as_pdf3.get(as_pdf3.c_get_margin_bottom) - TO_NUMBER(g_footer('fontsize_pt')) - c_padding
                 );
-        as_pdf3.set_font(g_footer_font_family, g_footer_style, g_footer_fontsize_pt);
-        as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => CASE WHEN g_footer_centered THEN x_center(v_txt)
-                         ELSE x_left_justify
-                    END
-            ,p_y => as_pdf3.get(as_pdf3.c_get_margin_bottom) - g_footer_fontsize_pt - c_padding
-            --,p_y => 20
-        );
+            END IF;
+        END LOOP;
     END apply_footer;
+
+
+    PROCEDURE set_complex_footer(
+         p_txt_center   VARCHAR2    := NULL
+        ,p_txt_left     VARCHAR2    := NULL
+        ,p_txt_right    VARCHAR2    := NULL
+        ,p_font_family  VARCHAR2    := 'helvetica'
+        ,p_style        VARCHAR2    := 'n'
+        ,p_fontsize_pt  NUMBER      := 8
+    ) IS
+    BEGIN
+        IF p_txt_center IS NOT NULL OR p_txt_left IS NOT NULL OR p_txt_right IS NOT NULL THEN
+            g_footer('fontsize_pt')     := LTRIM(TO_CHAR(p_fontsize_pt));
+            g_footer('font_family')     := p_font_family;
+            g_footer('style')           := p_style;
+            IF p_txt_center IS NOT NULL
+                THEN g_footer('txt_center') := p_txt_center;
+            END IF;
+            IF p_txt_left IS NOT NULL
+                THEN g_footer('txt_left') := p_txt_left;
+            END IF;
+            IF p_txt_right IS NOT NULL
+                THEN g_footer('txt_right') := p_txt_right;
+            END IF;
+
+            set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+        END IF;
+    END set_complex_footer;
 
     PROCEDURE set_footer(
         p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
@@ -541,12 +598,13 @@ $end
         ,p_centered     BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN  
-        g_footer_txt            := p_txt;    
-        g_footer_font_family    := p_font_family;
-        g_footer_style          := p_style;
-        g_footer_fontsize_pt    := p_fontsize_pt;
-        g_footer_centered       := p_centered;
-        set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+        IF p_txt IS NOT NULL THEN
+            g_footer('fontsize_pt')     := p_fontsize_pt;
+            g_footer('font_family')     := p_font_family;
+            g_footer('style')           := p_style;
+            g_footer(CASE WHEN p_centered THEN 'txt_center' ELSE 'txt_left' END) := p_txt;
+            set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+        END IF;
     END set_footer;
 
     PROCEDURE apply_header (
@@ -558,38 +616,93 @@ $end
         c_y_padding     CONSTANT NUMBER := 8; --space between bottom heading line and margin
         c_y_padding2    CONSTANT NUMBER := 4; --space between 2 heading lines
         c_rf            CONSTANT NUMBER := 0.2; -- raise factor. Anton uses the term. Spacing so bottom of font is not right on the line
+        v_which         VARCHAR2(64);
+        v_y             NUMBER;
+        v_fontsize_pt_2 NUMBER := TO_NUMBER(g_header('fontsize_pt_2'));
+        v_fontsize_pt_3 NUMBER := TO_NUMBER(g_header('fontsize_pt_3'));
     BEGIN
-        v_txt := REPLACE(
-                    REPLACE(
-                        REPLACE(g_header_txt, '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
-                        ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
-                    ,'!PAGE_VAL#', p_page_val
-                );
-        -- line 1
-        as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt);
-        as_pdf3.put_txt(p_txt => v_txt
-            ,p_x => CASE WHEN g_header_centered THEN x_center(v_txt)
-                         ELSE x_left_justify
-                    END
-            ,p_y => y_top_margin
-                    + c_y_padding + (c_rf * g_header_fontsize_pt)
-                -- go higer by line size of the 2nd line plus padding if needed
-                + CASE WHEN g_header_txt_2 IS NULL THEN 0 ELSE c_y_padding2 + ((1 + c_rf) * g_header_fontsize_pt_2) END
-        );
-        IF g_header_txt_2 IS NOT NULL THEN
-            v_txt := REPLACE(
-                        REPLACE(
-                            REPLACE(g_header_txt_2, '#PAGE_NR#', p_page_nr)
-                            ,'"PAGE_COUNT#', p_page_count)
-                        ,'!PAGE_VAL#', p_page_val
+        IF TO_NUMBER(g_header('fontsize_pt')) > 0  THEN
+            as_pdf3.set_font(g_header('font_family'), g_header('style'), TO_NUMBER(g_header('fontsize_pt')));
+            FOR i IN 1..3
+            LOOP
+                v_y := y_top_margin + c_y_padding + (c_rf * TO_NUMBER(g_header('fontsize_pt')))
+                    + CASE WHEN v_fontsize_pt_2 > 0 THEN c_y_padding2 + ((1 + c_rf) * v_fontsize_pt_2) ELSE 0 END
+                    + CASE WHEN v_fontsize_pt_3 > 0 THEN c_y_padding2 + ((1 + c_rf) * v_fontsize_pt_3) ELSE 0 END
+                ;
+                v_which := CASE i WHEN 1 THEN 'txt_left' WHEN 2 THEN 'txt_center' WHEN 3 THEN 'txt_right' END;
+                IF g_header.EXISTS(v_which) THEN
+                    v_txt := REPLACE(
+                                REPLACE(
+                                    REPLACE(g_header(v_which), '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                                    ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
+                                ,'!PAGE_VAL#', p_page_val
+                            );
+                    -- line 1
+                    as_pdf3.put_txt(
+                        p_txt   => v_txt
+                        ,p_x    => CASE i
+                                    WHEN 1 THEN x_left_justify
+                                    WHEN 2 THEN x_center(v_txt)
+                                    WHEN 3 THEN x_right_justify(v_txt)
+                                   END
+                        ,p_y => v_y
                     );
-            as_pdf3.set_font(g_header_font_family, g_header_style, g_header_fontsize_pt_2);
-            as_pdf3.put_txt(p_txt => v_txt
-                ,p_x => CASE WHEN g_header_centered_2 THEN x_center(v_txt)
-                            ELSE x_left_justify
-                        END
-                ,p_y => y_top_margin + c_y_padding + (c_rf * g_header_fontsize_pt_2)
-            );
+                END IF;
+            END LOOP;
+        END IF;
+        IF v_fontsize_pt_2 > 0 THEN
+            as_pdf3.set_font(g_header('font_family_2'), g_header('style_2'), v_fontsize_pt_2);
+            FOR i IN 1..3
+            LOOP
+                v_y := y_top_margin + c_y_padding + (c_rf * v_fontsize_pt_2)
+                    + CASE WHEN v_fontsize_pt_3 > 0 THEN c_y_padding2 + ((1 + c_rf) * v_fontsize_pt_3) ELSE 0 END
+                ;
+                v_which := CASE i WHEN 1 THEN 'txt_left_2' WHEN 2 THEN 'txt_center_2' WHEN 3 THEN 'txt_right_2' END;
+                IF g_header.EXISTS(v_which) THEN
+                    v_txt := REPLACE(
+                                REPLACE(
+                                    REPLACE(g_header(v_which), '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                                    ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
+                                ,'!PAGE_VAL#', p_page_val
+                            );
+                    -- line 1
+                    as_pdf3.put_txt(
+                        p_txt   => v_txt
+                        ,p_x    => CASE i
+                                    WHEN 1 THEN x_left_justify
+                                    WHEN 2 THEN x_center(v_txt)
+                                    WHEN 3 THEN x_right_justify(v_txt)
+                                   END
+                        ,p_y => v_y
+                    );
+                END IF;
+            END LOOP;
+        END IF;
+        IF v_fontsize_pt_3 > 0 THEN
+            as_pdf3.set_font(g_header('font_family_3'), g_header('style_3'), v_fontsize_pt_3);
+            FOR i IN 1..3
+            LOOP
+                v_y := y_top_margin + c_y_padding + (c_rf * v_fontsize_pt_3);
+                v_which := CASE i WHEN 1 THEN 'txt_left_3' WHEN 2 THEN 'txt_center_3' WHEN 3 THEN 'txt_right_3' END;
+                IF g_header.EXISTS(v_which) THEN
+                    v_txt := REPLACE(
+                                REPLACE(
+                                    REPLACE(g_header(v_which), '#PAGE_NR#', LTRIM(TO_CHAR(p_page_nr)))
+                                    ,'"PAGE_COUNT#', LTRIM(TO_CHAR(p_page_count)))
+                                ,'!PAGE_VAL#', p_page_val
+                            );
+                    -- line 1
+                    as_pdf3.put_txt(
+                        p_txt   => v_txt
+                        ,p_x    => CASE i
+                                    WHEN 1 THEN x_left_justify
+                                    WHEN 2 THEN x_center(v_txt)
+                                    WHEN 3 THEN x_right_justify(v_txt)
+                                   END
+                        ,p_y => v_y
+                    );
+                END IF;
+            END LOOP;
         END IF;
     END apply_header;
 
@@ -604,16 +717,104 @@ $end
         ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN
-        g_header_txt            := p_txt;    
-        g_header_font_family    := p_font_family;
-        g_header_style          := p_style;
-        g_header_fontsize_pt    := p_fontsize_pt;
-        g_header_centered       := p_centered;
-        g_header_txt_2          := p_txt_2;
-        g_header_fontsize_pt_2  := p_fontsize_pt_2;
-        g_header_centered_2     := p_centered_2;
-        set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+        set_complex_header(
+            p_txt_center    => CASE WHEN p_centered THEN p_txt END
+            ,p_txt_right    => CASE WHEN NOT p_centered THEN p_txt END
+            ,p_txt_left     => NULL
+            ,p_fontsize_pt  => p_fontsize_pt
+            ,p_font_family  => p_font_family
+            ,p_style        => p_style
+            ,p_txt_center_2 => CASE WHEN p_centered_2 THEN p_txt_2 END
+            ,p_txt_left_2   => CASE WHEN NOT p_centered_2 THEN p_txt_2 END
+            ,p_fontsize_pt_2    => p_fontsize_pt_2
+        );
     END set_header;
+
+    PROCEDURE set_complex_header(
+         p_txt_center       VARCHAR2    := NULL
+        ,p_txt_left         VARCHAR2    := NULL
+        ,p_txt_right        VARCHAR2    := NULL
+        ,p_fontsize_pt      NUMBER      := 18
+        ,p_font_family      VARCHAR2    := 'helvetica'
+        ,p_style            VARCHAR2    := 'b'
+        ,p_txt_center_2     VARCHAR2    := NULL
+        ,p_txt_left_2       VARCHAR2    := NULL
+        ,p_txt_right_2      VARCHAR2    := NULL
+        ,p_fontsize_pt_2    NUMBER      := 14
+        ,p_font_family_2    VARCHAR2    := 'helvetica'
+        ,p_style_2          VARCHAR2    := 'b'
+        ,p_txt_center_3     VARCHAR2    := NULL
+        ,p_txt_left_3       VARCHAR2    := NULL
+        ,p_txt_right_3      VARCHAR2    := NULL
+        ,p_fontsize_pt_3    NUMBER      := 14
+        ,p_font_family_3    VARCHAR2    := 'helvetica'
+        ,p_style_3          VARCHAR2    := 'b'
+    ) IS
+    BEGIN
+        IF p_txt_center IS NOT NULL
+            OR p_txt_left IS NOT NULL
+            OR p_txt_right IS NOT NULL
+        THEN
+            g_header('fontsize_pt') := LTRIM(TO_CHAR(p_fontsize_pt));
+            g_header('font_family') := p_font_family;
+            g_header('style') := p_style;
+            IF p_txt_center IS NOT NULL
+                THEN g_header('txt_center') := p_txt_center;
+            END IF;
+            IF p_txt_left IS NOT NULL
+                THEN g_header('txt_left') := p_txt_left;
+            END IF;
+            IF p_txt_right IS NOT NULL
+                THEN g_header('txt_right') := p_txt_right;
+            END IF;
+        ELSE
+            g_header('fontsize_pt') := '0';
+        END IF;
+
+        IF p_txt_center_2 IS NOT NULL
+            OR p_txt_left_2 IS NOT NULL
+            OR p_txt_right_2 IS NOT NULL
+        THEN
+            g_header('fontsize_pt_2') := LTRIM(TO_CHAR(p_fontsize_pt_2));
+            g_header('font_family_2') := p_font_family_2;
+            g_header('style_2') := p_style_2;
+            IF p_txt_center_2 IS NOT NULL
+                THEN g_header('txt_center_2') := p_txt_center_2;
+            END IF;
+            IF p_txt_left_2 IS NOT NULL
+                THEN g_header('txt_left_2') := p_txt_left_2;
+            END IF;
+            IF p_txt_right_2 IS NOT NULL
+                THEN g_header('txt_right_2') := p_txt_right_2;
+            END IF;
+        ELSE
+            g_header('fontsize_pt_2') := '0'; -- need for calculate y for line 1
+        END IF;
+
+        IF p_txt_center_3 IS NOT NULL
+            OR p_txt_left_3 IS NOT NULL
+            OR p_txt_right_3 IS NOT NULL
+        THEN
+            g_header('fontsize_pt_3') := LTRIM(TO_CHAR(p_fontsize_pt_3));
+            g_header('font_family_3') := p_font_family_3;
+            g_header('style_3') := p_style_3;
+            IF p_txt_center_3 IS NOT NULL
+                THEN g_header('txt_center_3') := p_txt_center_3;
+            END IF;
+            IF p_txt_left_3 IS NOT NULL
+                THEN g_header('txt_left_3') := p_txt_left_3;
+            END IF;
+            IF p_txt_right_3 IS NOT NULL
+                THEN g_header('txt_right_3') := p_txt_right_3;
+            END IF;
+        ELSE
+            g_header('fontsize_pt_3') := '0'; -- need for calcualte y for lines 1 and 2
+        END IF;
+
+        IF g_header.COUNT > 3 THEN -- we got 3 of them in the else blocks
+            set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
+        END IF;
+    END set_complex_header;
 
     PROCEDURE set_page_proc(p_sql_block CLOB)
     IS
@@ -649,6 +850,8 @@ $end
     BEGIN
         g_pagevals.DELETE;
         g_page_procs.DELETE;
+        g_footer.DELETE;
+        g_header.DELETE;
 $if $$use_app_log $then
         g_log := app_log_udt('PdfGen');
 $end
