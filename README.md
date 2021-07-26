@@ -223,6 +223,11 @@ Be aware that the concept of *centered* in *as_pdf3* means centered on the page.
 *as_pdf3.write* with align=>'center' be aware of this difference. If your left
 and write margins are the same, it will not matter.
 
+# install.sql
+
+Called from sqlplus, will deploy everything. You should comment out anything 
+you do not want or just use it as a guide.
+
 # as_pdf3_4.sql
 
 This copy of the 2012 original release by Anton Scheffer 
@@ -235,7 +240,7 @@ associated case/when to the public function *get()*.  If you have already
 installed (and perhaps modified) your own version, you will have no trouble 
 locating these 2 changes and implementing them.
 
-# applog.sql
+# app_log.sql
 
 A lightweight and fast general purpose database application logging facility, 
 the core is an object oriented user defined type with methods for writing 
@@ -246,8 +251,8 @@ it (or something like it) is indispensable for debugging and development.
 
 You do not have to deploy this User Defined Type and tables. There is a 
 compile directive in *PdfGen.sql* that must be set to turn it on. If you
-comment out the line in the deploy script that sets PLSQL_CCFLAGS
-(along with the call to run applog.sql), *PdfGen.sql* will compile just 
+comment out the line in the *install.sql* script that sets PLSQL_CCFLAGS
+(along with the call to run app_log.sql), *PdfGen.sql* will compile just 
 fine without it.
 
 # test/test_PdfGen.sql
@@ -262,7 +267,3 @@ then *test0* is not included. Assuming *HR* is installed, in the *test*
 folder is a script to add those grants (though it is simple enough to just 
 do so manually).
 
-# deploy.sql
-
-Called from sqlplus, will deploy everything. You should comment out anything 
-you do not want or just use it as a guide.

@@ -1,7 +1,7 @@
 --
--- comment this out if you do not want to use applog. Uncomment or put this line in
--- your deploy script if you are going to deploy and use applog.
---ALTER SESSION SET PLSQL_CCFLAGS='use_applog:TRUE';
+-- comment this out if you do not want to use app_log. Uncomment or put this line in
+-- your deploy script if you are going to deploy and use app_log.
+--ALTER SESSION SET PLSQL_CCFLAGS='use_app_log:TRUE';
 --
 CREATE OR REPLACE PACKAGE PdfGen
 -- This allows writes to a directory by calling as_pdf3.save_pdf. 
@@ -436,8 +436,8 @@ AS
 
     g_y                     NUMBER; -- the y value of the last grid line printed;
 
-$if $$use_applog $then
-    g_log                   applog_udt;
+$if $$use_app_log $then
+    g_log                   app_log_udt;
 $end
 
     PROCEDURE apply_page_procs
@@ -475,7 +475,7 @@ $end
                     -- with the same privs, same package global variable values, and same transaction state). 
                     --
                     BEGIN
---$if $$use_applog $then
+--$if $$use_app_log $then
 --                        g_log.log_p('calling g_page_procs('||TO_CHAR(p)||') for page nr:'||TO_CHAR(i));
 --$end
                         EXECUTE IMMEDIATE g_page_procs(p) USING i, v_page_count
@@ -484,7 +484,7 @@ $end
 
                     EXCEPTION
                         WHEN OTHERS THEN -- we ignore the error, but at least we print it for debugging
-$if $$use_applog $then
+$if $$use_app_log $then
                             g_log.log_p(SQLERRM);
                             g_log.log_p(DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
                             g_log.log_p(DBMS_UTILITY.format_call_stack);
@@ -649,8 +649,8 @@ $end
     BEGIN
         g_pagevals.DELETE;
         g_page_procs.DELETE;
-$if $$use_applog $then
-        g_log := applog_udt('PdfGen');
+$if $$use_app_log $then
+        g_log := app_log_udt('PdfGen');
 $end
         as_pdf3.init;
     END init;
@@ -690,7 +690,7 @@ $end
                      ) -- this gets us to the midpoint between the margins
                         - (as_pdf3.str_len(p_txt) / 2.0);
         IF v_start_x < v_left_margin THEN
-$if $$use_applog $then
+$if $$use_app_log $then
             g_log.log_p('x_center: text length exceeds width between margins so starting at left margin. p_txt='||p_txt);
             g_log.log_p('v_start_x: '||TO_CHAR(v_start_x)||' v_left_margin: '||TO_CHAR(v_left_margin));
 $else
@@ -856,7 +856,7 @@ $END
 
         -- check for something wrong with widths array
         IF p_widths IS NOT NULL AND p_widths.COUNT <> v_col_cnt THEN
-$if $$use_applog $then
+$if $$use_app_log $then
             g_log.log_p('cursor2table called with p_widths.COUNT='||TO_CHAR(p_widths.COUNT)||' but query column count is '||TO_CHAR(v_col_cnt)||', so p_widths is ignored');
 $else
             DBMS_OUTPUT.put_line('cursor2table called with p_widths.COUNT='||TO_CHAR(p_widths.COUNT)||' but query column count is '||TO_CHAR(v_col_cnt)||', so p_widths is ignored');
@@ -916,7 +916,7 @@ $end
                 - (l_tot_width_cols / 2.0);
 
             IF v_centered_left_margin < l_left_margin THEN
-$if $$use_applog $then
+$if $$use_app_log $then
                 g_log.log_p('cursor2table: grid width exceeds space between margins so starting at left margin and likely running off the edge of the page but maybe not. tot_width='
                     ||TO_CHAR(l_tot_width_cols)||' margin to margin is='
                     ||TO_CHAR((as_pdf3.get(as_pdf3.c_get_page_width) - as_pdf3.get(as_pdf3.c_get_margin_right)) - l_left_margin)
@@ -963,7 +963,7 @@ $end
         --
         LOOP
             v_fetched_rows := DBMS_SQL.fetch_rows(p_c);
---$if $$use_applog $then
+--$if $$use_app_log $then
 --            g_log.log_p('fetch '||TO_CHAR(v_fetched_rows)||' rows from cursor');
 --$end
             EXIT WHEN v_fetched_rows = 0;
@@ -982,7 +982,7 @@ $end
                         IF NOT g_pagevals.EXISTS(v_page_count) THEN
                             g_pagevals(v_page_count) := l_v;
                         ELSIF NVL(g_pagevals(v_page_count),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
---$if $$use_applog $then
+--$if $$use_app_log $then
 --                            g_log.log_p('got column break event i='||TO_CHAR(i)
 --                                ||' LastVal: '||g_pagevals(v_page_count)
 --                                ||' NewVal: '||l_v
