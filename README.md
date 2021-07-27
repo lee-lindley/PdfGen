@@ -27,11 +27,12 @@ public interface.
     - [Retrieve Blob and View](#retrieve-blob-and-view)
     - [Results](#results)
     - [A Few Details](#a-few-details)
-    - [NOPRINT and BREAK](#noprint-and-break)
-    - [Callbacks](#callbacks)
-    - [General Purpose Headers and Footers](#general-purpose-headers-and-footers)
-    - [Intermix Calls to as_pdf3](#intermix-calls-to-as_pdf3)
-    - [Concept of Centered](#concept-of-centered)
+        - [NOPRINT and BREAK](#noprint-and-break)
+        - [Callbacks](#callbacks)
+        - [Security](#security)
+        - [General Purpose Headers and Footers](#general-purpose-headers-and-footers)
+        - [Intermix Calls to as_pdf3](#intermix-calls-to-as_pdf3)
+        - [Concept of Centered](#concept-of-centered)
 2. [install.sql](#insallsql)
 3. [as_pdf3.sql](#as_pdf3_4sql)
 4. [applog.sql](#applogsql)
@@ -196,6 +197,9 @@ single non-printing break-column, then parse it in your callback procedure.
 
 ### Callbacks
 
+You may never need to write your own callback procedure as *set_page_header*
+and *set_page_footer* will generally be sufficient.
+
 The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 so that the page break column value can be supplied in addition to the page 
 number and page count that the original supported. One major difference is the 
@@ -203,7 +207,8 @@ use of bind placeholders instead of direct string substitution on your PL/SQL
 block string. You must provide positional bind placeholders for 
 EXECUTE IMMEDIATE (:var1, :var2, :var3) in the PL/SQL block strings you add 
 to page_procs. This solves a nagging problem with quoting as well as
-eliminating a potential vector for sql injection.
+eliminating a potential vector for sql injection that the page break column
+values introduce over the original design of *as_pdf3* page procs.
 
 Example:
 
@@ -230,9 +235,19 @@ break value captured while the query result set was processed. See *PdfGen*
 package header for an example of a comprehensive anonymous block that could do
 all "the needful" in lieu of a public procedure.
 
+### Security
+
+If you will be granting EXECUTE to *PdfGen* and *as_pdf3* to other schema owners,
+consider that they can inject code that will run as your schema owner unless
+the packages are defined with Invoker Rights. This implementation does so
+with **AUTHID CURRENT_USER**. You may have reasons to comment those out, such
+as wanting the caller to have privs to write to a particular directory without
+granting it directly. Just be aware that they can do ANYTHING in that callback
+procedure that your schema owner can do.
+
 ### General Purpose Headers and Footers
 
-Also provided are simplified methods for generating gneral purpose page headers
+Also provided are simplified methods for generating general purpose page headers
 and footers. You can use these procedures as a template for building your own 
 page_proc procedure if they do not meet your needs.
 
@@ -431,20 +446,23 @@ text parameters will be replaced with the values for each page.
 
 When the *set_page_header* and *set_page_footer* procedures just won't do it,
 you can build your own callback procedure that will be applied on every page.
-The procedure *apply_header* can serve as a guide. Note that your callback
-be must either completely implemented in the anonymous PL/SQL block 
-or as a public procedure called from the anonymous PL/SQL block. *p_sql_block* 
-will be called as:
-
-```sql
-    EXECUTE IMMEDIATE variable_holding_p_sql_block USING v_page_number, v_page_count, v_page_val;
-```
-so you must provide three bind placeholders (:var1, :var2, :var3) in your *p_sql_block*
-parameter value regardless of whether you use use them.
+The procedure *apply_header* can serve as a guide. 
 
 ```sql
     PROCEDURE set_page_proc(p_sql_block CLOB);
 ```
+
+Note that your callback must be either completely implemented in the 
+anonymous PL/SQL block or a public procedure called from it 
+like *apply_header*. *p_sql_block* will be called as:
+
+```sql
+    EXECUTE IMMEDIATE variable_holding_p_sql_block USING v_page_number, v_page_count, v_page_val;
+```
+
+so you must provide three bind placeholders (:var1, :var2, :var3) in your *p_sql_block*
+regardless of whether you use use them.
+
 ## PdfGen.refcursor2table
 
 Replaces *as_pdf3.refcursor2table*. The first form optionally obtains the column widths and headers

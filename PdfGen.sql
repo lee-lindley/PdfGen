@@ -4,11 +4,13 @@
 --ALTER SESSION SET PLSQL_CCFLAGS='use_app_log:TRUE';
 --
 CREATE OR REPLACE PACKAGE PdfGen
--- This allows writes to a directory by calling as_pdf3.save_pdf. 
--- Think about who you give execute to. If you are going to give
--- it to public, you might want to use invoker rights.
---AUTHID CURRENT_USER
-AS
+-- Think about who you give execute to if you comment this out. They
+-- will have the ability to inject code that executes as your schema owner
+-- through callback facility. If you make this a definer rights package,
+-- they also are writing to directories only your schema has write permission on, 
+-- not their own.
+AUTHID CURRENT_USER
+IS
 /*
   Author: Lee Lindley
   Date: 07/18/2021
@@ -42,21 +44,37 @@ THE SOFTWARE.
 --# PdfGen.sql
 --
 --*PdfGen* extends and enhances (replaces) the *as_pdf3.cursor2table* functionality
---with respect to column headers and widths, plus the ability to capture a column
---page break value for the page_procs callbacks, and go to a new page when the 
---break-column value changes.  Everything is implemented using the *as_pdf3* 
+--with respect to column headers and widths, plus the ability to capture a 
+--column "page break" value for the page_procs callbacks, and go to a new page when the 
+--break-column value changes. Everything is implemented using the *as_pdf3* 
 --public interface.
 --
---There are many report generators in the world. Most of them cost money.  This 
---is free, powerful enough for some common use cases, and a little easier than 
---using *as_pdf3* directly.
+--# Content
+--1. [PdfGen](#PdfGensql)
+--    - [Use Case](#use-case)
+--    - [Example](#example)
+--    - [Retrieve Blob and View](#retrieve-blob-and-view)
+--    - [Results](#results)
+--    - [A Few Details](#a-few-details)
+--        - [NOPRINT and BREAK](#noprint-and-break)
+--        - [Callbacks](#callbacks)
+--        - [Security](#security)
+--        - [General Purpose Headers and Footers](#general-purpose-headers-and-footers)
+--        - [Intermix Calls to as_pdf3](#intermix-calls-to-as_pdf3)
+--        - [Concept of Centered](#concept-of-centered)
+--2. [install.sql](#insallsql)
+--3. [as_pdf3.sql](#as_pdf3_4sql)
+--4. [applog.sql](#applogsql)
+--5. [test directory](#testtest_pdfgensql)
+--6. [samples directory](#samples)
+--6. [Manual Page](#manual_page)
 --
 --## Use Case
 --
 --The use case for this package is to perform a small subset of sqlplus report 
 --generation directly inside the database. 
 --
---Required features include page headers and footers with page break column 
+--Required features include page headers (TITLE) and footers with page break column 
 --values and hidden columns. (SQL already provides SUM Subtotals and Totals using 
 --*GROUPING SETS*, so that feature of sqlplus reports is redundant.) Rather 
 --than pulling the data out to a client sqlplus session on an ETL server, 
@@ -72,6 +90,7 @@ THE SOFTWARE.
 --
 --## Example
 --
+--```sql
 --    CREATE OR REPLACE FUNCTION test0 RETURN BLOB
 --    IS
 --        v_src       SYS_REFCURSOR;
@@ -107,6 +126,9 @@ THE SOFTWARE.
 --                ) AS last_name
 --                ,first_name
 --                ,department_name
+--                -- right justify the formatted amount in the width of the column
+--                -- maybe next version will provide an array of format strings for numbers and dates
+--                -- but for now format your own if you do not want the defaults
 --                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
 --            FROM a
 --            ORDER BY department_name NULLS LAST     -- to get the aggregates after detail
@@ -147,11 +169,11 @@ THE SOFTWARE.
 --            ,p_style            => 'b'
 --            ,p_fontsize_pt      => 16
 --            ,p_centered         => TRUE
---            ,p_txt_2            => 'Department: !PAGE_VAL#'
+--            ,p_txt_2            => 'Department: !PAGE_VAL#' -- TITLE column variable value
 --            ,p_fontsize_pt_2    => 12
 --            ,p_centered_2       => FALSE            -- left align
 --        );
---        --
+--        -- asking for trouble to use other than fixed width fault in the grid IMHO. YMMV.
 --        as_pdf3.set_font('courier', 'n', 10);
 --        v_src := get_src;                           -- open the query cursor
 --        PdfGen.refcursor2table(
@@ -160,7 +182,7 @@ THE SOFTWARE.
 --            ,p_headers                  => v_headers
 --            ,p_bold_headers             => TRUE     -- also light gray background on headers
 --            ,p_char_widths_conversion   => TRUE
---            ,p_break_col                => 4        -- sqlplus BREAK ON column
+--            ,p_break_col                => 4        -- sqlplus BREAK ON column becomes !PAGE_VAL#
 --            ,p_grid_lines               => FALSE
 --        );
 --        v_blob := PdfGen.get_pdf;
@@ -171,6 +193,7 @@ THE SOFTWARE.
 --        -- can insert into a table or add to a zip archive blob or attach to an email
 --        RETURN v_blob;                              
 --    END test0;
+--```
 --
 --## Retrieve Blob and View
 --
@@ -188,37 +211,44 @@ THE SOFTWARE.
 --
 -- ![test0_pgx](/images/test0_pgx.png)
 --
---Pdf files from test_PdfGen are in the *samples* folder. Github will display 
+--Pdf files from *test/test_PdfGen* are in the *samples* folder. Github will display 
 --them when selected.
 --
 --## A Few Details
 --
---Column widths may be set to 0 for NOPRINT, so Break Columns where the value is 
+--### NOPRINT and BREAK
+--
+--Column widths may be set to 0 for NOPRINT, so BREAK Columns where the value is 
 --captured and printed in the page header via a callback can be captured, but 
 --optionally not printed with the record. Note that if grouping/breaking on 
 --multiple columns is needed you can concatenate values into a string for a
 --single non-printing break-column, then parse it in your callback procedure.
 --
+--### Callbacks
+--
+--You may never need to write your own callback procedure as *set_page_header*
+--and *set_page_footer* will generally be sufficient.
+--
 --The *as_pdf3* "page_procs" callback facility is duplicated (both are called) 
 --so that the page break column value can be supplied in addition to the page 
 --number and page count that the original supported. One major difference is the 
---use of bind placeholders instead of direct string substitution in your PL/SQL 
---block. We follow the original convention for substitution strings in the 
---text provided to built-in header and footer procedures, but internally rather 
---than directly to the anonymous block. You will be providing positional bind 
---placeholders (:var1, :var2, :var3) for EXECUTE IMMEDIATE in the PL/SQL block 
---strings you add to page_procs. This solves a nagging problem with quoting 
---as well as eliminating potential sql injection.
+--use of bind placeholders instead of direct string substitution on your PL/SQL 
+--block string. You must provide positional bind placeholders for 
+--EXECUTE IMMEDIATE (:var1, :var2, :var3) in the PL/SQL block strings you add 
+--to page_procs. This solves a nagging problem with quoting as well as
+--eliminating a potential vector for sql injection that the page break column
+--values introduce over the original design of *as_pdf3* page procs.
 --
 --Example:
 --
 --    PdfGen.set_page_proc(
 --        q'[BEGIN 
 --            yourpkgname.apply_footer(
---                p_page_nr => :page_nr
---                ,p_page_count => :page_count
---                ,p_page_val => :page_val); 
---            END;
+--                p_page_nr       => :page_nr
+--                ,p_page_count   => :page_count
+--                ,p_page_val     => :page_val
+--            ); 
+--           END;
 --        ]'
 --    );
 --
@@ -229,16 +259,39 @@ THE SOFTWARE.
 --        ,CASE WHEN g_pagevals.EXISTS(i) THEN g_pagevals(i) ELSE NULL END
 --    ;
 --
---where *i* is the page number and *g_pagevals(i)* is the page specific column break
---value captured while the query result set was processed.
+--where *i* is the page number and *g_pagevals(i)* is the page specific column 
+--break value captured while the query result set was processed. See *PdfGen* 
+--package header for an example of a comprehensive anonymous block that could do
+--all "the needful" in lieu of a public procedure.
 --
---Also provided are simplified methods for generating semi-standard page header
---and footer. You can use these procedures as a template for building your own 
+--### Security
+--
+--If you will be granting EXECUTE to *PdfGen* and *as_pdf3* to other schema owners,
+--consider that they can inject code that will run as your schema owner unless
+--the packages are defined with Invoker Rights. This implementation does so
+--with **AUTHID CURRENT_USER**. You may have reasons to comment those out, such
+--as wanting the caller to have privs to write to a particular directory without
+--granting it directly. Just be aware that they can do ANYTHING in that callback
+--procedure that your schema owner can do.
+--
+--### General Purpose Headers and Footers
+--
+--Also provided are simplified methods for generating general purpose page headers
+--and footers. You can use these procedures as a template for building your own 
 --page_proc procedure if they do not meet your needs.
+--
+--We follow the original convention for substitution 
+--strings (#PAGE_NR#, "PAGE_COUNT#, !PAGE_VAL#) in the text provided to built-in
+--header and footer procedures, but it is done internally to text variables
+--rather than directly to the anonymous block. 
+--
+--### Intermix Calls to *as_pdf3*
 --
 --You can mix and match calls to *as_pdf3* procedures and functions simultaneous
 --with *PdfGen*. In fact you are expected to do so with procedures such 
 --as *as_pdf3.set_font*.
+--
+--### Concept of Centered
 --
 --Be aware that the concept of *centered* in *as_pdf3* means centered on the page.
 --*PdfGen* centers between the left and right margins. If you are using 
@@ -361,6 +414,7 @@ THE SOFTWARE.
     --);
     
     -- simple 1 line footer inside the bottom margin 
+    -- legacy. unless you want all the defaults, use set_page_footer instead.
     PROCEDURE set_footer(
         p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
         ,p_font_family  VARCHAR2    := 'helvetica'
@@ -382,6 +436,7 @@ THE SOFTWARE.
         ,p_page_count   NUMBER
         ,p_page_val     VARCHAR2
     );
+    -- legacy procedure. Use set_page_header instead.
     -- simple header slightly into the top margin with page specific substitutions
     -- Optionally can be two lines such as might be useful with column-break values on the
     -- second line.
@@ -443,7 +498,7 @@ END PdfGen;
 /
 show errors
 CREATE OR REPLACE PACKAGE BODY PdfGen
-AS
+IS
     -- pl/sql blocs given to execute immediate on every page at the very end.
     -- assigned via set_page_proc
     TYPE t_page_procs IS TABLE OF CLOB INDEX BY BINARY_INTEGER;
@@ -598,13 +653,13 @@ $end
         ,p_centered     BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN  
-        IF p_txt IS NOT NULL THEN
-            g_footer('fontsize_pt')     := p_fontsize_pt;
-            g_footer('font_family')     := p_font_family;
-            g_footer('style')           := p_style;
-            g_footer(CASE WHEN p_centered THEN 'txt_center' ELSE 'txt_left' END) := p_txt;
-            set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
-        END IF;
+        set_page_footer(
+            p_font_family   => p_font_family
+            ,p_style        => p_style
+            ,p_fontsize_pt  => p_fontsize_pt
+            ,p_txt_center   => CASE WHEN p_centered THEN p_txt END
+            ,p_txt_left     => CASE WHEN NOT p_centered THEN p_txt END
+        );
     END set_footer;
 
     PROCEDURE apply_header (

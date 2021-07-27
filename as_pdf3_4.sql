@@ -1,8 +1,10 @@
 CREATE OR REPLACE package as_pdf3
--- This allows writes to a directory.
--- Think about who you give execute to. If you are going to give
--- it to public, you might want to use invoker rights.
---AUTHID CURRENT_USER
+-- Think about who you give execute to if you comment this out. They
+-- will have the ability to inject code that executes as your schema owner
+-- through callback facility. If you make this a definer rights package,
+-- they also are writing to directories only your schema has write permission on, 
+-- not their own.
+AUTHID CURRENT_USER
 is
 /**********************************************
 **
