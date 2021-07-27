@@ -396,12 +396,12 @@ END test2
             ,p_top_margin   => 1.25
             ,p_bottom_margin    => 0.6
         );
-        PdfGen.set_complex_footer(
+        PdfGen.set_page_footer(
             p_txt_center    => 'Page #PAGE_NR# of "PAGE_COUNT#'
             ,p_txt_left     => 'Report Date: '||TO_CHAR(SYSDATE,'MM/DD/YYYY')
             ,p_txt_right    => 'Copyright notice???'
         );
-        PdfGen.set_complex_header(
+        PdfGen.set_page_header(
              p_txt_center   => 'Data Dictionary Views'
             ,p_txt_left     => 'Left text line 1'
             ,p_txt_right    => 'Right text line 1'

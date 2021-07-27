@@ -60,6 +60,7 @@ familiar and relatively easy to convert existing reports.
 
 ## Example
 
+```sql
     CREATE OR REPLACE FUNCTION test0 RETURN BLOB
     IS
         v_src       SYS_REFCURSOR;
@@ -142,7 +143,7 @@ familiar and relatively easy to convert existing reports.
             ,p_fontsize_pt_2    => 12
             ,p_centered_2       => FALSE            -- left align
         );
-        --
+        -- asking for trouble to use other than fixed width fault in the grid IMHO. YMMV.
         as_pdf3.set_font('courier', 'n', 10);
         v_src := get_src;                           -- open the query cursor
         PdfGen.refcursor2table(
@@ -162,6 +163,7 @@ familiar and relatively easy to convert existing reports.
         -- can insert into a table or add to a zip archive blob or attach to an email
         RETURN v_blob;                              
     END test0;
+```
 
 ## Retrieve Blob and View
 
@@ -305,9 +307,9 @@ A directory containing PDF files generated from *test_PdfGen.sql*.
 - [init](#pdfgeninit)
 - [set_page_format](#pdfgenset_page_format)
 - [set_footer](#pdfgenset_footer)
-- [set_complex_footer](#pdfgenset_complex_footer)
+- [set_page_footer](#pdfgenset_page_footer)
 - [set_header](#pdfgenset_header)
-- [set_complex_header](#pdfgenset_complex_header)
+- [set_page_header](#pdfgenset_page_header)
 - [set_page_proc](#pdfgenset_page_proc)
 - [refcursor2table](#pdfgenrefcursor2table)
 - [get_pdf](#pdfgenget_pdf)
@@ -339,8 +341,10 @@ The units are in inches with the default page size of 'LETTER' rather than the E
 
 ## PdfGen.set_footer
 
-A simple one line footer where the text can be either centered or left justified. The default
-puts 'Page 1 of 2' in the center in a small font just below the bottom margin.
+A simple one line page footer where the text can be either centered or left justified. The default
+puts 'Page 1 of 2' in the center in a small font just below the bottom margin. *set_footer*
+is a convenient procedure to call when you want the defaults; otherwise *set_page_footer*
+is a better choice.
 
 ```sql
     PROCEDURE set_footer(
@@ -352,13 +356,17 @@ puts 'Page 1 of 2' in the center in a small font just below the bottom margin.
     );
 ```
 
-## PdfGen.set_complex_footer
+## PdfGen.set_page_footer
 
-More control over what is still a one line footer, but you can have text in any or all
-of the justified left, centered and justified right locations. See samples/test3.pdf.
+A one line page footer with text in any or all
+of the justified left, centered and justified right locations.
+The placeholder strings **#PAGE_NR#**, **"PAGE_COUNT#**, and **!PAGE_VAL#** in your
+text parameters will be replaced with the values for each page.
+
+See samples/test3.pdf.
 
 ```sql
-    PROCEDURE set_complex_footer(
+    PROCEDURE set_page_footer(
          p_txt_center   VARCHAR2    := NULL
         ,p_txt_left     VARCHAR2    := NULL
         ,p_txt_right    VARCHAR2    := NULL
@@ -370,10 +378,12 @@ of the justified left, centered and justified right locations. See samples/test3
 
 ## PdfGen.set_header
 
-A one or two line header sitting barely above the top margin. Both lines can be
-centered or left justified independently, and if there is a column page break
-value it can be substituted into your text value (!PAGE_VAL#) on either or both lines.
-Page numbers can also be substituted as demonstrated in *set_footer*.
+*set_header* is a legacy procedure. *set_page_header* is recommended instead.
+
+A one or two line page header sitting slightly above the top margin. Both lines can be
+centered or left justified independently.
+The placeholder strings **#PAGE_NR#**, **"PAGE_COUNT#**, and **!PAGE_VAL#** in your
+text parameters will be replaced with the values for each page.
 
 ```sql
     PROCEDURE set_header(
@@ -387,14 +397,15 @@ Page numbers can also be substituted as demonstrated in *set_footer*.
         ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     );
 ```
-## PdfGen.set_complex_header
+## PdfGen.set_page_header
 
-A one to three line header with one or more of left justified, centered and right justified text values,
-any of which can have substitution of the page number, page count, or break column page value.
-You also have control over the font in all three lines.
+A one to three line header with one or more of left justified, centered and right justified text values.
+You also have control over the font for each line, but not separately for each string on the line.
+The placeholder strings **#PAGE_NR#**, **"PAGE_COUNT#**, and **!PAGE_VAL#** in your
+text parameters will be replaced with the values for each page.
 
 ```sql
-    PROCEDURE set_complex_header(
+    PROCEDURE set_page_header(
          p_txt_center       VARCHAR2    := NULL
         ,p_txt_left         VARCHAR2    := NULL
         ,p_txt_right        VARCHAR2    := NULL
@@ -418,20 +429,27 @@ You also have control over the font in all three lines.
 
 ## PdfGen.set_page_proc
 
-When the *set_complex_header* and *set_complex_footer* commands just won't do it,
+When the *set_page_header* and *set_page_footer* procedures just won't do it,
 you can build your own callback procedure that will be applied on every page.
-You can use the implementation of *apply_header* as a guide. Note that your callback
-must either be completely implemented in the anonymous PL/SQL block you provide
-or be a call to a public procedure.
+The procedure *apply_header* can serve as a guide. Note that your callback
+be must either completely implemented in the anonymous PL/SQL block 
+or as a public procedure called from the anonymous PL/SQL block. *p_sql_block* 
+will be called as:
 
 ```sql
-PROCEDURE set_page_proc(p_sql_block CLOB);
+    EXECUTE IMMEDIATE variable_holding_p_sql_block USING v_page_number, v_page_count, v_page_val;
+```
+so you must provide three bind placeholders (:var1, :var2, :var3) in your *p_sql_block*
+parameter value regardless of whether you use use them.
+
+```sql
+    PROCEDURE set_page_proc(p_sql_block CLOB);
 ```
 ## PdfGen.refcursor2table
 
 Replaces *as_pdf3.refcursor2table*. The first form optionally obtains the column widths and headers
-from the column "names" in the query result-set. Grid line rectangles are by default drawn around
-all of the cells as does *as_pdf3*, but it can be turned off. Both forms center the grid between
+from the column "names" in the query result set. Grid line rectangles are by default drawn around
+all of the cells as in *as_pdf3*, but it can be turned off. Both forms center the grid between
 the left and right margins.
 
 ```sql
@@ -466,7 +484,7 @@ See the [Example](#example) above for declaring and populating the widths and he
 ## PdfGen.get_pdf
 
 Although it calls *as_pdf3.get_pdf* to retrieve the BLOB, you must call the *PdfGen* version instead
-in order to apply the callback procedures including the headers and footers. *get_pdf* "finishes"
+to apply the callback procedures including the headers and footers. *get_pdf* "finishes"
 the PDF file and generates the BLOB.
 
 ```sql
@@ -476,15 +494,15 @@ the PDF file and generates the BLOB.
 ## PdfGen.save_pdf
 
 Although it calls *as_pdf3.save_pdf* to write the file to the directory on the Oracle server
-that you specify, you must call the *PdfGen* version instead in order to apply the callback
+that you specify, you must call the *PdfGen* version instead to apply the callback
 procedures including headers and footers. *save_pdf* "finishes" the PDF file, then writes it.
 
 Note that anyone granted execute to the package *as_pdf3* or *PdfGen* can write to directories
-that your schema has write access to, but not their own. Seriously consider uncommenting 
-the *AUTHID CURRENT_USER* lines in the package definitions before deploying if that is not
-your intent.
+that your schema has write access to, but not their own. Consider uncommenting 
+the *AUTHID CURRENT_USER* lines in the package specifications for both *PdfGen* and *as_pdf3*
+before deploying if that is not your intent.
 
-```sal
+```sql
     PROCEDURE save_pdf(
         p_dir       VARCHAR2
         ,p_filename VARCHAR2

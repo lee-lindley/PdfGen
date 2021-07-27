@@ -368,7 +368,7 @@ THE SOFTWARE.
         ,p_fontsize_pt  NUMBER      := 8
         ,p_centered     BOOLEAN     := TRUE -- false give left align
     );
-    PROCEDURE set_complex_footer(
+    PROCEDURE set_page_footer(
          p_txt_center   VARCHAR2    := NULL
         ,p_txt_left     VARCHAR2    := NULL
         ,p_txt_right    VARCHAR2    := NULL
@@ -395,7 +395,7 @@ THE SOFTWARE.
         ,p_fontsize_pt_2    NUMBER      := 14
         ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     );
-    PROCEDURE set_complex_header(
+    PROCEDURE set_page_header(
          p_txt_center       VARCHAR2    := NULL
         ,p_txt_left         VARCHAR2    := NULL
         ,p_txt_right        VARCHAR2    := NULL
@@ -563,7 +563,7 @@ $end
     END apply_footer;
 
 
-    PROCEDURE set_complex_footer(
+    PROCEDURE set_page_footer(
          p_txt_center   VARCHAR2    := NULL
         ,p_txt_left     VARCHAR2    := NULL
         ,p_txt_right    VARCHAR2    := NULL
@@ -588,7 +588,7 @@ $end
 
             set_page_proc(q'[BEGIN PdfGen.apply_footer(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
         END IF;
-    END set_complex_footer;
+    END set_page_footer;
 
     PROCEDURE set_footer(
         p_txt           VARCHAR2    := 'Page #PAGE_NR# of "PAGE_COUNT#'
@@ -717,7 +717,7 @@ $end
         ,p_centered_2       BOOLEAN     := TRUE -- false give left align
     ) IS
     BEGIN
-        set_complex_header(
+        set_page_header(
             p_txt_center    => CASE WHEN p_centered THEN p_txt END
             ,p_txt_right    => CASE WHEN NOT p_centered THEN p_txt END
             ,p_txt_left     => NULL
@@ -730,7 +730,7 @@ $end
         );
     END set_header;
 
-    PROCEDURE set_complex_header(
+    PROCEDURE set_page_header(
          p_txt_center       VARCHAR2    := NULL
         ,p_txt_left         VARCHAR2    := NULL
         ,p_txt_right        VARCHAR2    := NULL
@@ -814,7 +814,7 @@ $end
         IF g_header.COUNT > 3 THEN -- we got 3 of them in the else blocks
             set_page_proc(q'[BEGIN PdfGen.apply_header(p_page_nr => :page_nr, p_page_count => :page_count, p_page_val => :page_val); END;]');
         END IF;
-    END set_complex_header;
+    END set_page_header;
 
     PROCEDURE set_page_proc(p_sql_block CLOB)
     IS
