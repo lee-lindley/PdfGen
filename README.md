@@ -21,7 +21,7 @@ break-column value changes. Everything is implemented using the *as_pdf3*
 public interface.
 
 # Content
-1. [PdfGen](#PdfGensql)
+1. [PdfGen.sql](#PdfGensql)
     - [Use Case](#use-case)
     - [Example](#example)
     - [Retrieve Blob and View](#retrieve-blob-and-view)
@@ -38,7 +38,7 @@ public interface.
 4. [applog.sql](#applogsql)
 5. [test directory](#testtest_pdfgensql)
 6. [samples directory](#samples)
-6. [Manual Page](#manual_page)
+6. [Manual Page](#manual-page)
 
 ## Use Case
 
@@ -461,7 +461,7 @@ like *apply_header*. *p_sql_block* will be called as:
 ```
 
 so you must provide three bind placeholders (:var1, :var2, :var3) in your *p_sql_block*
-regardless of whether you use use them.
+regardless of whether you use them.
 
 ## PdfGen.refcursor2table
 
@@ -516,9 +516,9 @@ that you specify, you must call the *PdfGen* version instead to apply the callba
 procedures including headers and footers. *save_pdf* "finishes" the PDF file, then writes it.
 
 Note that anyone granted execute to the package *as_pdf3* or *PdfGen* can write to directories
-that your schema has write access to, but not their own. Consider uncommenting 
-the *AUTHID CURRENT_USER* lines in the package specifications for both *PdfGen* and *as_pdf3*
-before deploying if that is not your intent.
+that your schema has write access to, but not their own, unless defined with invoker rights.
+The default implementation in this repository defines the packages with invoker 
+rights (AUTHID CURRENT_USER). Think carefully before changing that.
 
 ```sql
     PROCEDURE save_pdf(
