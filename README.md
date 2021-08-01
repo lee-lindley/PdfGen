@@ -3,7 +3,8 @@
 
 Create an attractive report from a SQL query with capabilities
 similar to those available in sqlplus report generator, but with
-control over fonts, margins, page size, and orientation.
+control over fonts, margins, page size, and orientation. (See *samples*
+directory for PDF files it produced.)
 
 The package is built on *as_pdf3* by Anton Scheffer which is included in
 this repository. Everything you need to deploy it is here.
@@ -11,6 +12,24 @@ this repository. Everything you need to deploy it is here.
 There are many report generators in the world. Most of them cost money.  This 
 is free, powerful enough for some common use cases, and a little easier than 
 using *as_pdf3* directly.
+
+# Installation
+
+Clone this repository or download it as a zip archive.
+
+Note: [plsql_utilties](https://github.com/lee-lindley/plsql_utilities) is provided as a submodule,
+so use the clone command with recursive-submodules option:
+
+`git clone --recursive-submodules https://github.com/lee-lindley/PdfGen.git`
+
+or download it separately as a zip archive and extract the content of root folder
+into *plsql_utilities* folder.
+
+Follow the instructions in [install.sql](#installsql)
+
+Note that you do not absolutely require the submodule. You can turn off
+usage of *app_log* with a compile directive, and that is the only feature
+required from *plsql_utilities*.
 
 # PdfGen.sql
 
@@ -35,8 +54,8 @@ public interface.
         - [Concept of Centered](#concept-of-centered)
 2. [install.sql](#insallsql)
 3. [as_pdf3.sql](#as_pdf3_4sql)
-4. [applog.sql](#applogsql)
-5. [test directory](#testtest_pdfgensql)
+4. [app_log](#app_log)
+5. [test/test_PdfGen.sql ](#testtest_pdfgensql)
 6. [samples directory](#samples)
 6. [Manual Page](#manual-page)
 
@@ -247,9 +266,9 @@ procedure that your schema owner can do.
 
 ### General Purpose Headers and Footers
 
-Also provided are simplified methods for generating general purpose page headers
-and footers. You can use these procedures as a template for building your own 
-page_proc procedure if they do not meet your needs.
+Simplified methods for generating general purpose page headers
+and footers are provided. You can use these procedures as a template for 
+building your own page_proc procedure if they do not meet your needs.
 
 We follow the original convention for substitution 
 strings (#PAGE_NR#, "PAGE_COUNT#, !PAGE_VAL#) in the text provided to built-in
@@ -271,8 +290,10 @@ and write margins are the same, it will not matter.
 
 # install.sql
 
-Called from sqlplus, will deploy everything. You should comment out anything 
-you do not want or just use it as a guide.
+Called from sqlplus, will deploy everything. Edit it
+to set one define variable to TRUE or FALSE depending on whether you want to 
+include *app_log* in the compile of *PdfGen*.  The comments should be sufficient
+to guide you.
 
 # as_pdf3_4.sql
 
@@ -286,20 +307,15 @@ associated case/when to the public function *get()*.  If you have already
 installed (and perhaps modified) your own version, you will have no trouble 
 locating these 2 changes and implementing them.
 
-# app_log.sql
+# app_log
 
-A lightweight and fast general purpose database application logging facility, 
-the core is an object oriented user defined type with methods for writing 
-log records to a table.  Since the autonomous transactions write independently,
-you can get status of the program before "succesful" completion that might be
-required for dbms_output. In addition to generally useful logging, 
-it (or something like it) is indispensable for debugging and development.
+See [plsql_utilities/README.md](https://github.com/lee-lindley/plsql_utilities#app_log)
 
 You do not have to deploy this User Defined Type and tables. There is a 
 compile directive in *PdfGen.sql* that must be set to turn it on. If you
-comment out the line in the *install.sql* script that sets PLSQL_CCFLAGS
-(along with the call to run app_log.sql), *PdfGen.sql* will compile just 
-fine without it.
+set the define *use_app_log* to "FALSE" in [install.sql](#insallsql)
+(along with commenting out the call to run install_app_log.sql), 
+*PdfGen.sql* will compile just fine without it.
 
 # test/test_PdfGen.sql
 
@@ -414,7 +430,8 @@ text parameters will be replaced with the values for each page.
 ```
 ## PdfGen.set_page_header
 
-A one to three line header with one or more of left justified, centered and right justified text values.
+A one to three line header with one or more of left justified, centered and right justified text values
+on each line.
 You also have control over the font for each line, but not separately for each string on the line.
 The placeholder strings **#PAGE_NR#**, **"PAGE_COUNT#**, and **!PAGE_VAL#** in your
 text parameters will be replaced with the values for each page.
