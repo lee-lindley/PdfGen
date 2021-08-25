@@ -15,15 +15,16 @@ using *as_pdf3* directly.
 
 # Installation
 
-Clone this repository or download it as a zip archive.
+Clone this repository or download it as a [zip](https://github.com/lee-lindley/PdfGen/archive/refs/heads/main.zip) archive.
 
 Note: [plsql_utilties](https://github.com/lee-lindley/plsql_utilities) is provided as a submodule,
 so use the clone command with recursive-submodules option:
 
 `git clone --recursive-submodules https://github.com/lee-lindley/PdfGen.git`
 
-or download it separately as a zip archive and extract the content of root folder
-into *plsql_utilities* folder.
+or download it separately as a zip 
+archive ([plsql_utilities.zip](https://github.com/lee-lindley/plsql_utilities/archive/refs/heads/main.zip)),
+and extract the content of root folder into *plsql_utilities* folder.
 
 Follow the instructions in [install.sql](#installsql)
 
