@@ -9,10 +9,10 @@ IS
 -- not their own. Keep it invoker rights.
 /*
   Author: Lee Lindley
-  Date: 07/18/2021
+  Date: 08/25/2021
   https://github.com/lee-lindley/PdfGen
 
-  Copyright (C) 2021 by Lee Lindley
+Copyright (C) 2021 by Lee Lindley
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -95,6 +95,10 @@ THE SOFTWARE.
         -- index to column to perform a page break upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
+
     );
     -- the second style uses arrays of column header values and column widths you provide,
     -- again centering the results on the page.
@@ -108,6 +112,9 @@ THE SOFTWARE.
         -- index to column to perform a newpage call upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     );
 
     --

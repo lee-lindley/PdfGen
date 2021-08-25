@@ -28,9 +28,8 @@ and extract the content of root folder into *plsql_utilities* folder.
 
 Follow the instructions in [install.sql](#installsql)
 
-Note that you do not absolutely require the submodule. You can turn off
-usage of *app_log* with a compile directive, and that is the only feature
-required from *plsql_utilities*.
+Only the necessary modules from *plsql_utilities* are compiled by default. You can run the install.sql
+in that directory to get the rest.
 
 # PdfGen.sql
 
@@ -56,9 +55,10 @@ public interface.
 2. [install.sql](#insallsql)
 3. [as_pdf3.sql](#as_pdf3_4sql)
 4. [app_log](#app_log)
-5. [test/test_PdfGen.sql ](#testtest_pdfgensql)
-6. [samples directory](#samples)
-6. [Manual Page](#manual-page)
+5. [app_dbms_sql](#app_dbms_sql)
+6. [test/test_PdfGen.sql ](#testtest_pdfgensql)
+7. [samples directory](#samples)
+8. [Manual Page](#manual-page)
 
 ## Use Case
 
@@ -120,6 +120,7 @@ familiar and relatively easy to convert existing reports.
                 -- right justify the formatted amount in the width of the column
                 -- maybe next version will provide an array of format strings for numbers and dates
                 -- but for now format your own if you do not want the defaults
+                -- You can set the defaults, but they apply to all number/date columns
                 ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
             FROM a
             ORDER BY department_name NULLS LAST     -- to get the aggregates after detail
@@ -318,6 +319,12 @@ set the define *use_app_log* to "FALSE" in [install.sql](#insallsql)
 (along with commenting out the call to run install_app_log.sql), 
 *PdfGen.sql* will compile just fine without it.
 
+# app_dbms_sql
+
+See [plsql_utilities/README.md](https://github.com/lee-lindley/plsql_utilities#app_dbms_sql)
+
+This package is required.
+
 # test/test_PdfGen.sql
 
 A package containing my test cases as well as examples of how to use *PdfGen*.
@@ -498,6 +505,9 @@ the left and right margins.
         -- index to column to perform a page break upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     );
 ```
 
@@ -515,6 +525,9 @@ See the [Example](#example) above for declaring and populating the widths and he
         -- index to column to perform a newpage call upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     );
 ```
 ## PdfGen.get_pdf

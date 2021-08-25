@@ -495,7 +495,7 @@ $end
 
     -- write the report grid onto the page objects creating new pages as needed
     PROCEDURE cursor2table ( 
-        p_c integer
+        p_c BINARY_INTEGER
         -- count on these being continuous starting at index=1 and matching the query columns
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
@@ -503,22 +503,16 @@ $end
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     )
     IS
         c_padding  CONSTANT NUMBER := 2;
         c_rf       CONSTANT NUMBER := 0.2; -- raise factor of text above cell bottom 
-        v_col_cnt           INTEGER;
-$IF DBMS_DB_VERSION.VER_LE_10 $THEN
-        v_desc_tab          DBMS_SQL.desc_tab2;
-$ELSE
+        v_col_cnt           BINARY_INTEGER;
         v_desc_tab          DBMS_SQL.desc_tab3;
-$END
-        v_date_tab          DBMS_SQL.date_table;
-        v_number_tab        DBMS_SQL.number_table;
-        v_string_tab        DBMS_SQL.varchar2_table;
 
-        v_bulk_cnt          BINARY_INTEGER := 100;
-        v_fetched_rows      BINARY_INTEGER;
         v_page_count        BINARY_INTEGER := as_pdf3.get(as_pdf3.c_get_page_count);
         v_col_widths        t_col_widths;
         -- new left marging for starting each line after calculating how to center the grid between the margins
@@ -527,6 +521,7 @@ $END
         v_y                 NUMBER;
         v_lineheight        NUMBER;
         v_txt               VARCHAR2(32767);
+        v_arr_vals          APP_DBMS_SQL.t_arr_varchar2;
 
         -- based on dbms_sql column info
         FUNCTION lookup_col_type(p_col_type BINARY_INTEGER)
@@ -543,34 +538,6 @@ $END
                    END;
         END;
 
---
-        FUNCTION get_col_val(
-            c BINARY_INTEGER -- column index starting at 1
-            ,i BINARY_INTEGER -- record number for this bulk fetch
-        )
-        RETURN VARCHAR2
-        IS
-            v_str VARCHAR2(32767);
-        BEGIN
-            CASE lookup_col_type(v_desc_tab(c).col_type)
-                WHEN 'N' THEN
-                    v_number_tab.DELETE;
-                    DBMS_SQL.column_value(p_c, c, v_number_tab);
-                    v_str := TO_CHAR(v_number_tab( i + v_number_tab.FIRST()), 'tm9' );
-                WHEN 'D' THEN
-                    v_date_tab.DELETE;
-                    DBMS_SQL.column_value(p_c, c, v_date_tab);
-                    v_str := TO_CHAR(v_date_tab( i + v_date_tab.FIRST()), 'MM/DD/YYYY');
-                WHEN 'C' THEN
-                    v_string_tab.DELETE;
-                    DBMS_SQL.column_value(p_c, c, v_string_tab);
-                    v_str := v_string_tab(i + v_string_tab.FIRST());
-                ELSE
-                    NULL;
-            END CASE;
-            RETURN v_str;
-        END;
---
         PROCEDURE show_header
         IS
         BEGIN
@@ -603,11 +570,8 @@ $END
     -- Start procedcure body
     --
     BEGIN
-$IF DBMS_DB_VERSION.VER_LE_10 $THEN
-        DBMS_SQL.describe_columns2( p_c, v_col_cnt, v_desc_tab );
-$ELSE
-        DBMS_SQL.describe_columns3( p_c, v_col_cnt, v_desc_tab );
-$END
+        v_desc_tab := APP_DBMS_SQL.get_desc_tab3(p_c);
+        v_col_cnt := v_desc_tab.COUNT;
 --
         IF as_pdf3.get(as_pdf3.c_get_current_font) IS NULL THEN 
             as_pdf3.set_font('courier', 12);
@@ -690,21 +654,6 @@ $end
             END IF;
         END;
 
-        -- define the arrays for holding the column values from each bulk fetch
-        FOR c IN 1 .. v_col_cnt
-        LOOP
-            CASE lookup_col_type(v_desc_tab(c).col_type)
-                WHEN 'N' THEN
-                    DBMS_SQL.define_array(p_c, c, v_number_tab, v_bulk_cnt, 1);
-                WHEN 'D' THEN
-                    DBMS_SQL.define_array(p_c, c, v_date_tab, v_bulk_cnt, 1);
-                WHEN 'C' THEN
-                    DBMS_SQL.define_array(p_c, c, v_string_tab, v_bulk_cnt, 1);
-                ELSE
-                    NULL;
-            END CASE;
-       END LOOP;
-
         v_lineheight := as_pdf3.get(as_pdf3.c_get_fontsize) * (1 + c_rf);
         v_y := COALESCE(as_pdf3.get(as_pdf3.c_get_y) ,y_top_margin) - v_lineheight; 
 
@@ -721,64 +670,62 @@ $end
         -- the records from the cursor
         --
         LOOP
-            v_fetched_rows := DBMS_SQL.fetch_rows(p_c);
---$if $$use_app_log $then
---            g_log.log_p('fetch '||TO_CHAR(v_fetched_rows)||' rows from cursor');
---$end
-            EXIT WHEN v_fetched_rows = 0;
-            FOR i IN 0 .. v_fetched_rows - 1
-            LOOP
-                IF v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) THEN
-                    as_pdf3.new_page;
-                    v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
-                    v_y := y_top_margin - v_lineheight; 
-                    show_header;
-                END IF;
-                IF p_break_col IS NOT NULL THEN
-                    DECLARE
-                        l_v             VARCHAR2(32767) := get_col_val(p_break_col, i);
-                    BEGIN
-                        IF NOT g_pagevals.EXISTS(v_page_count) THEN
-                            g_pagevals(v_page_count) := l_v;
-                        ELSIF NVL(g_pagevals(v_page_count),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
+            v_arr_vals := APP_DBMS_SQL.get_next_column_values(
+                                            p_ctx               => p_c
+                                            ,p_num_format       => p_num_format
+                                            ,p_date_format      => p_date_format
+                                            ,p_interval_format  => p_interval_format
+                                        );
+            EXIT WHEN v_arr_vals IS NULL;
+            IF v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) THEN
+                as_pdf3.new_page;
+                v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
+                v_y := y_top_margin - v_lineheight; 
+                show_header;
+            END IF;
+            IF p_break_col IS NOT NULL THEN
+                DECLARE
+                    l_v             VARCHAR2(32767) := v_arr_vals(p_break_col);
+                BEGIN
+                    IF NOT g_pagevals.EXISTS(v_page_count) THEN
+                        g_pagevals(v_page_count) := l_v;
+                    ELSIF NVL(g_pagevals(v_page_count),'~#NULL#~') <> NVL(l_v,'~#NULL#~') THEN 
 --$if $$use_app_log $then
 --                            g_log.log_p('got column break event i='||TO_CHAR(i)
 --                                ||' LastVal: '||g_pagevals(v_page_count)
 --                                ||' NewVal: '||l_v
 --                            );
 --$end
-                            as_pdf3.new_page;
-                            v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
-                            g_pagevals(v_page_count) := l_v;
-                            v_y := y_top_margin - v_lineheight; 
-                            show_header;
-                        END IF;
-                    END;
+                        as_pdf3.new_page;
+                        v_page_count := as_pdf3.get(as_pdf3.c_get_page_count);
+                        g_pagevals(v_page_count) := l_v;
+                        v_y := y_top_margin - v_lineheight; 
+                        show_header;
+                    END IF;
+                END;
+            END IF;
+            v_x := v_centered_left_margin; 
+            FOR c IN 1 .. v_col_cnt
+            LOOP
+                CONTINUE WHEN v_col_widths(c) = 0; -- skip hidden columns
+                IF p_grid_lines THEN
+                    as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight);
                 END IF;
-                v_x := v_centered_left_margin; 
-                FOR c IN 1 .. v_col_cnt
-                LOOP
-                    CONTINUE WHEN v_col_widths(c) = 0; -- skip hidden columns
-                    IF p_grid_lines THEN
-                        as_pdf3.rect(v_x, v_y, v_col_widths(c), v_lineheight);
+                v_txt := v_arr_vals(c);
+                IF v_txt IS NOT NULL THEN
+                    IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
+                        -- need to right justify numbers.
+                        THEN as_pdf3.put_txt(v_x + v_col_widths(c) - c_padding - as_pdf3.str_len( v_txt ) 
+                                                ,v_y + (c_rf * v_lineheight)
+                                                ,v_txt
+                                            );
+                        -- dates and strings left justify
+                        ELSE as_pdf3.put_txt(v_x + c_padding, v_y + (c_rf * v_lineheight), v_txt);
                     END IF;
-                    v_txt := get_col_val(c, i);
-                    IF v_txt IS NOT NULL THEN
-                        IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
-                            -- need to right justify numbers.
-                            THEN as_pdf3.put_txt(v_x + v_col_widths(c) - c_padding - as_pdf3.str_len( v_txt ) 
-                                                    ,v_y + (c_rf * v_lineheight)
-                                                    ,v_txt
-                                                );
-                            -- dates and strings left justify
-                            ELSE as_pdf3.put_txt(v_x + c_padding, v_y + (c_rf * v_lineheight), v_txt);
-                        END IF;
-                    END IF;
-                    v_x := v_x + v_col_widths(c); 
-                END LOOP;                       -- over columns
-                v_y := v_y - v_lineheight;      -- advance to the next line
-            END LOOP;                           -- over array of rows fetched
-            EXIT WHEN v_fetched_rows != v_bulk_cnt;
+                END IF;
+                v_x := v_x + v_col_widths(c); 
+            END LOOP;                       -- over columns
+            v_y := v_y - v_lineheight;      -- advance to the next line
         END LOOP;                               -- main fetch loop      
         g_y := v_y; --we cannot set g_y in as_pdf3.
         -- as_pdf3 allowed for writing new text immediately after the grid without specifying x/y.
@@ -797,13 +744,17 @@ $end
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     ) IS
-        v_cx                        INTEGER;
-        v_src                       SYS_REFCURSOR := p_src;
+        v_cx                        BINARY_INTEGER;
     BEGIN
-        v_cx := DBMS_SQL.to_cursor_number(v_src);
-        cursor2table(v_cx, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col, p_grid_lines);
-        DBMS_SQL.close_cursor(v_cx);
+        v_cx := APP_DBMS_SQL.convert_cursor(p_src);
+        cursor2table(v_cx, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col, p_grid_lines
+            ,p_num_format, p_date_format, p_interval_format
+        );
+        APP_DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
 
@@ -812,26 +763,21 @@ $end
         ,p_col_headers              BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
     ) IS
         v_cx                        INTEGER;
         v_src                       SYS_REFCURSOR := p_src;
         v_widths                    t_col_widths;
         v_headers                   t_col_headers;
         v_col_cnt                   INTEGER;
-$IF DBMS_DB_VERSION.VER_LE_10 $THEN
-        v_desc_tab          DBMS_SQL.desc_tab2;
-$ELSE
         v_desc_tab          DBMS_SQL.desc_tab3;
-$END
     BEGIN
-        v_cx := DBMS_SQL.to_cursor_number(v_src);
+        v_cx := APP_DBMS_SQL.convert_cursor(p_src);
         IF p_col_headers THEN
-$IF DBMS_DB_VERSION.VER_LE_10 $THEN
-            DBMS_SQL.describe_columns2(v_cx, v_col_cnt, v_desc_tab);
-$ELSE
-            DBMS_SQL.describe_columns3(v_cx, v_col_cnt, v_desc_tab);
-$END
-            FOR i IN 1..v_col_cnt
+            v_desc_tab := APP_DBMS_SQL.get_desc_tab3(v_cx);
+            FOR i IN 1..v_desc_tab.COUNT
             LOOP
                 v_widths(i) := v_desc_tab(i).col_name_len + 1;
                 v_headers(i) := v_desc_tab(i).col_name;
@@ -843,8 +789,9 @@ $END
                 ,p_col_headers -- bold
                 , TRUE
                 ,p_break_col, p_grid_lines
+                ,p_num_format, p_date_format, p_interval_format
         );
-        DBMS_SQL.close_cursor(v_cx);
+        APP_DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
 END PdfGen;

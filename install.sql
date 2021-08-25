@@ -8,6 +8,9 @@ prompt deploying &&subdir/install_app_log.sql
 @&&subdir/install_app_log.sql
 ------------------------------------------------------
 --
+define subdir="plsql_utilities/app_dbms_sql"
+prompt deploying &&subdir/install_app_dbms_sql.sql
+@&&subdir/install_app_dbms_sql.sql
 define subdir=.
 prompt deploying as_pdf3_4.sql
 @as_pdf3_4.sql
