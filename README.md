@@ -323,7 +323,7 @@ set the define *use_app_log* to "FALSE" in [install.sql](#insallsql)
 
 See [plsql_utilities/README.md](https://github.com/lee-lindley/plsql_utilities#app_dbms_sql)
 
-This package is required.
+This object type is required.
 
 # test/test_PdfGen.sql
 
@@ -520,6 +520,30 @@ See the [Example](#example) above for declaring and populating the widths and he
         -- you can provide width values and NOT provide headers if you do not want them to print
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
+        ,p_bold_headers             BOOLEAN         := FALSE
+        ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
+        -- index to column to perform a newpage call upon value change
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
+    );
+```
+
+The third form adds one parameter, *p_formats* to the second form. You do not need to populate
+any of them and you can do so sparesly. If any are present they are used in lieu of the default
+coversion when TO_CHAR is called (assuming the column type is one that is converted with TO_CHAR).
+This allows specifying column specific format. For example one number column could use the default
+format while another can specify a currency stlye.
+
+```sql
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
+        -- you can provide width values and NOT provide headers if you do not want them to print
+        ,p_widths                   t_col_widths    
+        ,p_headers                  t_col_headers  
+        ,p_formats                  t_col_headers  
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
         -- index to column to perform a newpage call upon value change
