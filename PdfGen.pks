@@ -117,6 +117,22 @@ THE SOFTWARE.
         ,p_interval_format          VARCHAR2        := NULL
     );
 
+    -- this one adds the optional sparse array of TO_CHAR conversion formats on a per column basis
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
+        -- you can provide width values and NOT provide headers if you do not want them to print
+        ,p_widths                   t_col_widths    
+        ,p_headers                  t_col_headers  
+        ,p_formats                  t_col_headers  
+        ,p_bold_headers             BOOLEAN         := FALSE
+        ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
+        -- index to column to perform a newpage call upon value change
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
+    );
     --
     -- register a callback procedure or simple anonymous block to finish off pages at the end.
     -- Normally used for page headers and footers. The dynamic SQL string is called with EXECUTE IMMEDIATE

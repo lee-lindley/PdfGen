@@ -495,7 +495,7 @@ $end
 
     -- write the report grid onto the page objects creating new pages as needed
     PROCEDURE cursor2table ( 
-        p_c BINARY_INTEGER
+         p_sql IN OUT NOCOPY        app_dbms_sql_str_udt
         -- count on these being continuous starting at index=1 and matching the query columns
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
@@ -503,15 +503,12 @@ $end
         ,p_char_widths_conversion   BOOLEAN         := FALSE
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
-        ,p_num_format               VARCHAR2        := 'tm9'
-        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
-        ,p_interval_format          VARCHAR2        := NULL
     )
     IS
         c_padding  CONSTANT NUMBER := 2;
         c_rf       CONSTANT NUMBER := 0.2; -- raise factor of text above cell bottom 
         v_col_cnt           BINARY_INTEGER;
-        v_desc_tab          DBMS_SQL.desc_tab3;
+        v_col_types         arr_integer_udt := p_sql.get_column_types;
 
         v_page_count        BINARY_INTEGER := as_pdf3.get(as_pdf3.c_get_page_count);
         v_col_widths        t_col_widths;
@@ -521,10 +518,10 @@ $end
         v_y                 NUMBER;
         v_lineheight        NUMBER;
         v_txt               VARCHAR2(32767);
-        v_arr_vals          APP_DBMS_SQL.t_arr_varchar2;
+        v_arr_vals          arr_clob_udt;
 
         -- based on dbms_sql column info
-        FUNCTION lookup_col_type(p_col_type BINARY_INTEGER)
+        FUNCTION lookup_col_type(p_col_type INTEGER)
         RETURN VARCHAR2 -- D ate, N umber, C har
         IS
         BEGIN
@@ -570,8 +567,7 @@ $end
     -- Start procedcure body
     --
     BEGIN
-        v_desc_tab := APP_DBMS_SQL.get_desc_tab3(p_c);
-        v_col_cnt := v_desc_tab.COUNT;
+        v_col_cnt := v_col_types.COUNT;
 --
         IF as_pdf3.get(as_pdf3.c_get_current_font) IS NULL THEN 
             as_pdf3.set_font('courier', 12);
@@ -670,12 +666,7 @@ $end
         -- the records from the cursor
         --
         LOOP
-            v_arr_vals := APP_DBMS_SQL.get_next_column_values(
-                                            p_ctx               => p_c
-                                            ,p_num_format       => p_num_format
-                                            ,p_date_format      => p_date_format
-                                            ,p_interval_format  => p_interval_format
-                                        );
+            p_sql.get_next_column_values(p_arr_clob => v_arr_vals);
             EXIT WHEN v_arr_vals IS NULL;
             IF v_y < as_pdf3.get(as_pdf3.c_get_margin_bottom) THEN
                 as_pdf3.new_page;
@@ -713,7 +704,7 @@ $end
                 END IF;
                 v_txt := v_arr_vals(c);
                 IF v_txt IS NOT NULL THEN
-                    IF lookup_col_type(v_desc_tab(c).col_type) = 'N' 
+                    IF lookup_col_type(v_col_types(c)) = 'N' 
                         -- need to right justify numbers.
                         THEN as_pdf3.put_txt(v_x + v_col_widths(c) - c_padding - as_pdf3.str_len( v_txt ) 
                                                 ,v_y + (c_rf * v_lineheight)
@@ -748,13 +739,57 @@ $end
         ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
         ,p_interval_format          VARCHAR2        := NULL
     ) IS
-        v_cx                        BINARY_INTEGER;
+        v_formats                   t_col_headers;
     BEGIN
-        v_cx := APP_DBMS_SQL.convert_cursor(p_src);
-        cursor2table(v_cx, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col, p_grid_lines
-            ,p_num_format, p_date_format, p_interval_format
+        refcursor2table(
+        p_src                       => p_src
+        ,p_widths                   => p_widths                   
+        ,p_headers                  => p_headers                  
+        ,p_formats                  => v_formats
+        ,p_bold_headers             => p_bold_headers             
+        ,p_char_widths_conversion   => p_char_widths_conversion
+        ,p_break_col                => p_break_col                
+        ,p_grid_lines               => p_grid_lines               
+        ,p_num_format               => p_num_format               
+        ,p_date_format              => p_date_format              
+        ,p_interval_format          => p_interval_format          
         );
-        APP_DBMS_SQL.close_cursor(v_cx);
+    END refcursor2table
+    ;
+
+    PROCEDURE refcursor2table(
+        p_src                       SYS_REFCURSOR
+        ,p_widths                   t_col_widths    
+        ,p_headers                  t_col_headers  
+        ,p_formats                  t_col_headers
+        ,p_bold_headers             BOOLEAN         := FALSE
+        ,p_char_widths_conversion   BOOLEAN         := FALSE
+        ,p_break_col                BINARY_INTEGER  := NULL
+        ,p_grid_lines               BOOLEAN         := TRUE
+        ,p_num_format               VARCHAR2        := 'tm9'
+        ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
+        ,p_interval_format          VARCHAR2        := NULL
+    ) IS
+        v_sql                       app_dbms_sql_str_udt;
+    BEGIN
+        v_sql := app_dbms_sql_str_udt(
+            p_cursor                => p_src
+            ,p_default_num_fmt      => p_num_format
+            ,p_default_date_fmt     => p_date_format
+            ,p_default_interval_fmt => p_interval_format
+        );
+        IF p_formats IS NOT NULL AND p_formats.COUNT > 0 THEN
+            DECLARE
+                l_i BINARY_INTEGER := p_formats.first;
+            BEGIN
+                WHILE l_i IS NOT NULL
+                LOOP
+                    v_sql.set_fmt(p_col_index => l_i, p_fmt => p_formats(l_i));
+                    l_i := p_formats.next(l_i);
+                END LOOP;
+            END;
+        END IF;
+        cursor2table(v_sql, p_widths, p_headers, p_bold_headers, p_char_widths_conversion, p_break_col, p_grid_lines);
     END refcursor2table
     ;
 
@@ -767,31 +802,32 @@ $end
         ,p_date_format              VARCHAR2        := 'MM/DD/YYYY'
         ,p_interval_format          VARCHAR2        := NULL
     ) IS
-        v_cx                        INTEGER;
-        v_src                       SYS_REFCURSOR := p_src;
+        v_sql                       app_dbms_sql_str_udt;
         v_widths                    t_col_widths;
         v_headers                   t_col_headers;
-        v_col_cnt                   INTEGER;
-        v_desc_tab          DBMS_SQL.desc_tab3;
+        v_col_names                 arr_varchar2_udt;
     BEGIN
-        v_cx := APP_DBMS_SQL.convert_cursor(p_src);
+        v_sql := app_dbms_sql_str_udt(
+            p_cursor                => p_src
+            ,p_default_num_fmt      => p_num_format
+            ,p_default_date_fmt     => p_date_format
+            ,p_default_interval_fmt => p_interval_format
+        );
         IF p_col_headers THEN
-            v_desc_tab := APP_DBMS_SQL.get_desc_tab3(v_cx);
-            FOR i IN 1..v_desc_tab.COUNT
+            v_col_names := v_sql.get_column_names;
+            FOR i IN 1..v_col_names.COUNT
             LOOP
-                v_widths(i) := v_desc_tab(i).col_name_len + 1;
-                v_headers(i) := v_desc_tab(i).col_name;
+                v_widths(i) := LENGTH(v_col_names(i)) + 1;
+                v_headers(i) := v_col_names(i);
             END LOOP;
         END IF;
-        cursor2table(v_cx
+        cursor2table(v_sql
                 ,CASE WHEN p_col_headers THEN v_widths END
                 ,CASE WHEN p_col_headers THEN v_headers END
                 ,p_col_headers -- bold
-                , TRUE
+                ,TRUE
                 ,p_break_col, p_grid_lines
-                ,p_num_format, p_date_format, p_interval_format
         );
-        APP_DBMS_SQL.close_cursor(v_cx);
     END refcursor2table
     ;
 END PdfGen;
