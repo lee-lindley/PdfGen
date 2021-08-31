@@ -93,6 +93,7 @@ $if $$have_hr_schema_select $then
         v_blob      BLOB;
         v_widths    PdfGen.t_col_widths;
         v_headers   PdfGen.t_col_headers;
+        v_formats   PdfGen.t_col_headers;
         FUNCTION get_src RETURN SYS_REFCURSOR IS
             l_src SYS_REFCURSOR;
         BEGIN
@@ -122,10 +123,7 @@ $if $$have_hr_schema_select $then
                 ) AS last_name
                 ,first_name
                 ,department_name
-                -- right justify the formatted amount in the width of the column
-                -- maybe next version will provide an array of format strings for numbers and dates
-                -- but for now format your own if you do not want the defaults
-                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
+                ,salary
             FROM a
             ORDER BY department_name NULLS LAST     -- to get the aggregates after detail
                 ,a.last_name NULLS LAST             -- notice based on FROM column value, not the one we munged in resultset
@@ -147,6 +145,8 @@ $if $$have_hr_schema_select $then
         v_widths(4)  := 0;                          -- sqlplus COLUMN NOPRINT 
         v_headers(5) := 'Salary';
         v_widths(5)  := 16;
+        -- override default number format for this column
+        v_formats(5) := '$999,999,999.99';
         --
         PdfGen.init;
         PdfGen.set_page_format(
@@ -176,6 +176,7 @@ $if $$have_hr_schema_select $then
             p_src                       => v_src
             ,p_widths                   => v_widths
             ,p_headers                  => v_headers
+            ,p_formats                  => v_formats
             ,p_bold_headers             => TRUE     -- also light gray background on headers
             ,p_char_widths_conversion   => TRUE
             ,p_break_col                => 4        -- sqlplus BREAK ON column

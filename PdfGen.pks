@@ -118,6 +118,25 @@ THE SOFTWARE.
     );
 
     -- this one adds the optional sparse array of TO_CHAR conversion formats on a per column basis
+    -- in the p_formats parameter.
+    -- Example:
+    --DECLARE
+    --    v_formats   PdfGen.t_col_headers;
+    --    v_headers   PdfGen.t_col_header;
+    --    v_widths    PdfGen.t_col_widths;
+    --BEGIN
+    --    ...
+    --    v_formats(4) := '$999,999,999.99';
+    --    ...
+    --    PdfGen.refcursor2table(
+    --        p_src           => v_src
+    --        ,p_widths       => v_widths
+    --        ,p_headers      => v_headers
+    --        ,p_bold_headers => TRUE
+    --        ,p_char_widths_converstion => TRUE
+    --        ,p_num_format   => 'TM6'
+    --    );
+    --END;
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
         -- you can provide width values and NOT provide headers if you do not want them to print

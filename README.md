@@ -88,6 +88,7 @@ familiar and relatively easy to convert existing reports.
         v_blob      BLOB;
         v_widths    PdfGen.t_col_widths;
         v_headers   PdfGen.t_col_headers;
+        v_formats   PdfGen.t_col_headers;
         FUNCTION get_src RETURN SYS_REFCURSOR IS
             l_src SYS_REFCURSOR;
         BEGIN
@@ -117,11 +118,7 @@ familiar and relatively easy to convert existing reports.
                 ) AS last_name
                 ,first_name
                 ,department_name
-                -- right justify the formatted amount in the width of the column
-                -- maybe next version will provide an array of format strings for numbers and dates
-                -- but for now format your own if you do not want the defaults
-                -- You can set the defaults, but they apply to all number/date columns
-                ,LPAD(TO_CHAR(salary,'$999,999,999.99'),16) -- leave space for sign even though we will not have one
+                ,salary
             FROM a
             ORDER BY department_name NULLS LAST     -- to get the aggregates after detail
                 ,a.last_name NULLS LAST             -- notice based on FROM column value, not the one we munged in resultset
@@ -143,6 +140,8 @@ familiar and relatively easy to convert existing reports.
         v_widths(4)  := 0;                          -- sqlplus COLUMN NOPRINT 
         v_headers(5) := 'Salary';
         v_widths(5)  := 16;
+        -- override default number format for this column
+        v_formats(5) := '$999,999,999.99';
         --
         PdfGen.init;
         PdfGen.set_page_format(
@@ -172,6 +171,7 @@ familiar and relatively easy to convert existing reports.
             p_src                       => v_src
             ,p_widths                   => v_widths
             ,p_headers                  => v_headers
+            ,p_formats                  => v_formats
             ,p_bold_headers             => TRUE     -- also light gray background on headers
             ,p_char_widths_conversion   => TRUE
             ,p_break_col                => 4        -- sqlplus BREAK ON column becomes !PAGE_VAL#
@@ -323,7 +323,16 @@ set the define *use_app_log* to "FALSE" in [install.sql](#insallsql)
 
 See [plsql_utilities/README.md](https://github.com/lee-lindley/plsql_utilities#app_dbms_sql)
 
-This object type is required.
+This object type is required as are the types:
+
+- *arr_varchar2_udt*
+- *arr_integer_udt*
+- *arr_clob_udt*
+- *arr_arr_clob_udt*
+
+That said there is nothing preventing you from using your own basic types. Just comment
+out the install of these and do global substitutions for the type names in the remaining
+source files.
 
 # test/test_PdfGen.sql
 
@@ -495,6 +504,9 @@ from the column "names" in the query result set. Grid line rectangles are by def
 all of the cells as in *as_pdf3*, but it can be turned off. Both forms center the grid between
 the left and right margins.
 
+Numbers are right justified in the available column width after formatting via TO_CHAR, while all other types
+are left justified.
+
 ```sql
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
@@ -518,10 +530,12 @@ See the [Example](#example) above for declaring and populating the widths and he
     PROCEDURE refcursor2table(
         p_src                       SYS_REFCURSOR
         -- you can provide width values and NOT provide headers if you do not want them to print
-        ,p_widths                   t_col_widths    
-        ,p_headers                  t_col_headers  
-        ,p_bold_headers             BOOLEAN         := FALSE
-        ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
+      --
+      ,p_widths                     t_col_widths    
+      ,p_headers                    t_col_headers  
+      ,p_bold_headers               BOOLEAN         := FALSE
+      ,p_char_widths_conversion     BOOLEAN         := FALSE -- you almost certainly want TRUE
+      --
         -- index to column to perform a newpage call upon value change
         ,p_break_col                BINARY_INTEGER  := NULL
         ,p_grid_lines               BOOLEAN         := TRUE
@@ -543,7 +557,9 @@ format while another can specify a currency stlye.
         -- you can provide width values and NOT provide headers if you do not want them to print
         ,p_widths                   t_col_widths    
         ,p_headers                  t_col_headers  
-        ,p_formats                  t_col_headers  
+      --
+      ,p_formats                    t_col_headers  
+      --
         ,p_bold_headers             BOOLEAN         := FALSE
         ,p_char_widths_conversion   BOOLEAN         := FALSE -- you almost certainly want TRUE
         -- index to column to perform a newpage call upon value change
