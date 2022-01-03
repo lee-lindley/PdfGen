@@ -224,7 +224,7 @@ AS
                     ON c.table_name = v.view_name
                 WHERE d.table_name LIKE 'ALL%'
                 ORDER BY v.view_name
-                FETCH FIRST 40 ROWS ONLY
+                --FETCH FIRST 40 ROWS ONLY
             ) v
           )
           ;
