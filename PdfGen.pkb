@@ -508,7 +508,7 @@ $end
         c_padding  CONSTANT NUMBER := 2;
         c_rf       CONSTANT NUMBER := 0.2; -- raise factor of text above cell bottom 
         v_col_cnt           BINARY_INTEGER;
-        v_col_types         arr_integer_udt := p_sql.get_column_types;
+        v_col_types         &&d_arr_integer_udt. := p_sql.get_column_types;
 
         v_page_count        BINARY_INTEGER := as_pdf3.get(as_pdf3.c_get_page_count);
         v_col_widths        t_col_widths;
@@ -518,7 +518,7 @@ $end
         v_y                 NUMBER;
         v_lineheight        NUMBER;
         v_txt               VARCHAR2(32767);
-        v_arr_vals          arr_clob_udt;
+        v_arr_vals          &&d_arr_clob_udt.;
 
         -- based on dbms_sql column info
         FUNCTION lookup_col_type(p_col_type INTEGER)
@@ -805,7 +805,7 @@ $end
         v_sql                       app_dbms_sql_str_udt;
         v_widths                    t_col_widths;
         v_headers                   t_col_headers;
-        v_col_names                 arr_varchar2_udt;
+        v_col_names                 &&d_arr_varchar2_udt.;
     BEGIN
         v_sql := app_dbms_sql_str_udt(
             p_cursor                => p_src

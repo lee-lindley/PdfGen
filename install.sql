@@ -1,5 +1,15 @@
 whenever sqlerror exit failure
 set define on
+-- set these to your own naming convention.
+-- If you already have types that server the purpose, change these defines to those
+-- names and comment out the compiles below
+--
+define d_arr_integer_udt="arr_integer_udt"
+define d_arr_varchar2_udt="arr_varchar2_udt"
+--define d_arr_arr_varchar2_udt="arr_arr_varchar2_udt"
+define d_arr_clob_udt="arr_clob_udt"
+define d_arr_arr_clob_udt="arr_arr_clob_udt"
+--
 define use_app_log="TRUE"
 -- Comment this next section out if you set use_app_log to false
 ------------------------------------------------------
